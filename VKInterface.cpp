@@ -5,7 +5,7 @@
 #include <mutex>     // See registerLogs/*Specifier*/Callback
 #include <cstring>   // std::strcmp
 #include <map>       // See pickBestPhysicalDevice(...)
-#include <limits>    // See clampSwapChainExtent;
+#include <limits>    // See updateSwapchainExtent;
 #include <algorithm> // std::clamp/std::min/std::max
 
 // Quick note : if you see rqd* it mean ReQuireD*
@@ -593,7 +593,7 @@ namespace VKI
 
         clearNullMaxImageCount( physicalDeviceMinimalRequirement.swapChainInfo);
         context.swapChainInfo = physicalDeviceMinimalRequirement.swapChainInfo;
-        clampSwapChainCurrentExtent(context.swapChainInfo, windowContext);
+        updateSwapchainExtents(context.physicalDevice, context.surface, windowContext, context.swapChainInfo);
         adaptSwapChainInfoToDevice(context.swapChainInfo, context.physicalDevice, context.surface);
 
         context.swapChain = createSwapChain(context.device,
@@ -2808,15 +2808,12 @@ namespace VKI
         }
     }
 
-    void queuePresent(const VkQueue queue, 
-                      const uint32_t  imageIndex, 
-                      const VkSwapchainKHR  swapchain,
-                      const std::vector<VkSemaphore> &semaphores,
-                      bool *pSuboptimal,
-                      bool *pSurfaceLost,
-                      bool *pOutOfDate,
-                      bool *pDeviceLost,
-                      bool *pFullScreenExclusiveModeLost
+    void queuePresent(const VkQueue                     queue, 
+                      const uint32_t                    imageIndex, 
+                      const VkSwapchainKHR              swapchain,
+                      const std::vector<VkSemaphore> &  semaphores,
+                      SwapchainStatusFlags* const       pErrorFlags,
+                      const SwapchainStatusFlags        supportedErrorFlags
                      )
     {
         VkResult swapchainError;
@@ -2833,9 +2830,7 @@ namespace VKI
 
         VkResult error = vkQueuePresentKHR(queue, &presentInfo);
 
-        bool suboptimal=false, surfaceLost=false, outOfDate=false, deviceLost=false, fullScreenModeLost=false;
-
-        switch(error)
+        switch(swapchainError)
         {
             case (VK_SUCCESS):
             {
@@ -2845,38 +2840,43 @@ namespace VKI
             case (VK_SUBOPTIMAL_KHR):
             {
                 logInfoCB("queuePresent successfully presented a image to the swapchain but the swapchain is subOptimal.");
-                suboptimal=true;
+                if (supportedErrorFlags.test(SWAPCHAIN_STATUS_SUBOPTIMAL_INDEX) && pErrorFlags!=nullptr)
+                    *pErrorFlags &= SWAPCHAIN_STATUS_SUBOPTIMAL_BIT;
                 break;
             }
             case (VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT):
             {
                 logFatalErrorCB("queuePresent failed to present a image to the swapchain : fullscreen exclusive mode lost.");
-                fullScreenModeLost=true;
-                if (pFullScreenExclusiveModeLost == nullptr)
+                if (supportedErrorFlags.test(SWAPCHAIN_STATUS_FULL_SCREEN_EXCLUSIVE_MODE_LOST_INDEX) && pErrorFlags!=nullptr)
+                    *pErrorFlags &= SWAPCHAIN_STATUS_FULL_SCREEN_EXCLUSIVE_MODE_LOST_BIT;
+                else
                     throw std::runtime_error("Program doesn't survive the lost of full screen exclusive mode.");
                 break;
             }
             case (VK_ERROR_OUT_OF_DATE_KHR):
             {
                 logFatalErrorCB("queuePresent failed to present a image to the swapchain : out of date.");
-                outOfDate=true;
-                if (pOutOfDate == nullptr)
+                if (supportedErrorFlags.test(SWAPCHAIN_STATUS_OUT_OF_DATE_INDEX) && pErrorFlags!=nullptr)
+                    *pErrorFlags &= SWAPCHAIN_STATUS_OUT_OF_DATE_BIT;
+                else
                     throw std::runtime_error("out of date.");
                 break;
             }
             case (VK_ERROR_SURFACE_LOST_KHR):
             {
                 logFatalErrorCB("queuePresent failed to present a image to the swapchain : surface lost.");
-                surfaceLost=true;
-                if (pSurfaceLost == nullptr)
+                if (supportedErrorFlags.test(SWAPCHAIN_STATUS_SURFACE_LOST_INDEX) && pErrorFlags!=nullptr)
+                    *pErrorFlags &= SWAPCHAIN_STATUS_SURFACE_LOST_BIT;
+                else
                     throw std::runtime_error("surface lost.");
                 break;
             }
             case (VK_ERROR_DEVICE_LOST):
             {
                 logFatalErrorCB("queuePresent failed to present a image to the swapchain : device lost.");
-                deviceLost=true;
-                if (pDeviceLost==nullptr)
+                if (supportedErrorFlags.test(SWAPCHAIN_STATUS_DEVICE_LOST_INDEX) && pErrorFlags!=nullptr)
+                    *pErrorFlags &= SWAPCHAIN_STATUS_DEVICE_LOST_BIT;
+                else
                     throw std::runtime_error("GPU lost.");
                 break;
             }
@@ -2892,20 +2892,9 @@ namespace VKI
                 throw std::runtime_error("Program outdated.");
             }
         }
-
-        if (pSuboptimal != nullptr)
-            *pSuboptimal=suboptimal;
-        if (pSurfaceLost != nullptr)
-            *pSurfaceLost=surfaceLost;
-        if (pOutOfDate != nullptr)
-            *pOutOfDate=outOfDate;
-        if (pDeviceLost != nullptr)
-            *pDeviceLost=deviceLost;
-        if (pFullScreenExclusiveModeLost != nullptr)
-            *pFullScreenExclusiveModeLost=fullScreenModeLost;
-
     }
 
+    /* Support EOL.
     void queuePresent(const VkQueue queue, 
                       const std::vector<std::pair<VkSwapchainKHR, uint32_t>> &swapchainImagesIndicies, 
                       const std::vector<VkSemaphore> &semaphores,
@@ -3010,6 +2999,7 @@ namespace VKI
             *pFullScreenExclusiveModeLost=fullScreenModeLost;
 
     }
+    */
 
     VkDevice createLogicalDevice(
             const VkPhysicalDevice physicalDevice, 
@@ -3503,37 +3493,23 @@ namespace VKI
     }
 
     // clamp the currentExtent to the framebuffer of the windows.
-    void clampSwapChainCurrentExtent(SwapChainInfo& swapChainInfo, const WindowContext &wc)
+    void updateSwapchainExtents(const VkPhysicalDevice phyDevice, 
+                                const VkSurfaceKHR surface, 
+                                const WindowContext &wContext,
+                                SwapChainInfo& swapchainInfo
+                               )
     {
-        if (
-            (swapChainInfo.capabilities.currentExtent.width == std::numeric_limits<uint32_t>::max()) ||
-            (swapChainInfo.capabilities.currentExtent.height== std::numeric_limits<uint32_t>::max())
-           )
-        {
-            swapChainInfo.capabilities.currentExtent.height = -1;
-            swapChainInfo.capabilities.currentExtent.width  = -1;
+        SwapChainInfo deviceSwapchainInfo = getPhysicalDeviceSwapChainInfo(phyDevice, surface, false);
 
-            return;
-        }
-        else
-        {
-            VkExtent2D windowExtent;
-            windowExtent = getWindowFramebufferSize(wc);
+        VkExtent2D windowExtent = getWindowFramebufferSize(wContext);
+        VkExtent2D max          = deviceSwapchainInfo.capabilities.maxImageExtent;
+        VkExtent2D min          = deviceSwapchainInfo.capabilities.minImageExtent;
 
-            VkExtent2D max;
-            max.width  = swapChainInfo.capabilities.maxImageExtent.width;
-            max.height = swapChainInfo.capabilities.maxImageExtent.height;
-            VkExtent2D min;
-            min.width  = swapChainInfo.capabilities.minImageExtent.width;
-            min.height = swapChainInfo.capabilities.minImageExtent.height;
-            VkExtent2D current;
-            current.width  = swapChainInfo.capabilities.currentExtent.width;
-            current.height = swapChainInfo.capabilities.currentExtent.height;
+        swapchainInfo.capabilities.currentExtent.width = std::clamp(windowExtent.width , min.width , max.width );
+        swapchainInfo.capabilities.currentExtent.height= std::clamp(windowExtent.height, min.height, max.height);
 
-            swapChainInfo.capabilities.currentExtent.width = std::clamp(current.width , min.width , max.width );
-            swapChainInfo.capabilities.currentExtent.height= std::clamp(current.height, min.height, max.height);
-        }
-
+        swapchainInfo.capabilities.maxImageExtent = max;
+        swapchainInfo.capabilities.minImageExtent = min;
     }
 
     bool operator==(VkSurfaceFormatKHR lf, VkSurfaceFormatKHR rf)
@@ -3858,17 +3834,15 @@ namespace VKI
         return min <= max;
     }
 
-    uint32_t acquireNextImage(const VkDevice        device, 
-                              const VkSwapchainKHR  swapchain, 
-                              const VkSemaphore     semaphore, 
-                              const VkFence         fence, 
-                              uint64_t              timeout,
-                              const SwapchainStatusFlags *pErrorFlags,
-                              SwapchainStatusFlags        supportedErrorFlags
+    uint32_t acquireNextImage(const VkDevice              device, 
+                              const VkSwapchainKHR        swapchain, 
+                              const VkSemaphore           semaphore, 
+                              const VkFence               fence, 
+                              uint64_t                    timeout,
+                              SwapchainStatusFlags* const pErrorFlags,
+                              const SwapchainStatusFlags  supportedErrorFlags
                              )
     {
-        SwapchainStatusFlags errorFlags(0);
-
         uint32_t imgIndex;
         VkResult error = vkAcquireNextImageKHR(device, swapchain, timeout, semaphore, fence, &imgIndex);
 
@@ -3882,19 +3856,22 @@ namespace VKI
             case (VK_SUBOPTIMAL_KHR):
             {
                 logWarningCB("acquireNextImage retreived the next image but the swapchain is suboptimal.");
-                errorFlags |= SWAPCHAIN_STATUS_SUBOPTIMAL_BIT;
+                if (supportedErrorFlags.test(SWAPCHAIN_STATUS_SUBOPTIMAL_INDEX) && pErrorFlags!=nullptr)
+                    *pErrorFlags &= SWAPCHAIN_STATUS_SUBOPTIMAL_BIT;
                 break;
             }
             case (VK_NOT_READY):
             {
                 logWarningCB("acquireNextImage failed to retreive the next image : not ready.");
-                errorFlags |= SWAPCHAIN_STATUS_NOT_READY_BIT;
+                if (supportedErrorFlags.test(SWAPCHAIN_STATUS_NOT_READY_INDEX) && pErrorFlags!=nullptr)
+                    *pErrorFlags &= SWAPCHAIN_STATUS_NOT_READY_BIT;
                 return -1;
             }
             case (VK_TIMEOUT):
             {
                 logErrorCB("acquireNextImage failed to retreived the next image : timeout.");
-                errorFlags |= SWAPCHAIN_STATUS_TIMEOUT_BIT;
+                if (supportedErrorFlags.test(SWAPCHAIN_STATUS_TIMEOUT_INDEX) && pErrorFlags!=nullptr)
+                    *pErrorFlags &= SWAPCHAIN_STATUS_TIMEOUT_BIT;
                 return -1;
             }
             case (VK_ERROR_OUT_OF_DEVICE_MEMORY):
@@ -3906,20 +3883,26 @@ namespace VKI
             case (VK_ERROR_DEVICE_LOST):
             {
                 logFatalErrorCB("acquireNextImage failed to retreived the next image : Device lost.");
-                errorFlags |= SWAPCHAIN_STATUS_DEVICE_LOST_BIT;
-                throw std::runtime_error("GPU lost.");
+                if (supportedErrorFlags.test(SWAPCHAIN_STATUS_DEVICE_LOST_INDEX) && pErrorFlags!=nullptr)
+                    *pErrorFlags &= SWAPCHAIN_STATUS_DEVICE_LOST_BIT;
+                else
+                    throw std::runtime_error("GPU lost.");
             }
             case (VK_ERROR_OUT_OF_DATE_KHR):
             {
                 logFatalErrorCB("acquireNextImage failed to retreived the next image : swapchain out of date.");
-                errorFlags |= SWAPCHAIN_STATUS_OUT_OF_DATE_BIT;
-                throw std::runtime_error("Program failed to recover.");
+                if (supportedErrorFlags.test(SWAPCHAIN_STATUS_OUT_OF_DATE_INDEX) && pErrorFlags!=nullptr)
+                    *pErrorFlags &= SWAPCHAIN_STATUS_OUT_OF_DATE_BIT;
+                else
+                    throw std::runtime_error("Program failed to recover after a out of date swapchain.");
             }
             case (VK_ERROR_SURFACE_LOST_KHR):
             {
                 logFatalErrorCB("acquireNextImage failed to retreived the next image : surface lost.");
-                errorFlags |= SWAPCHAIN_STATUS_OUT_OF_DATE_BIT;
-                throw std::runtime_error("Program failed to find a new surface to draw.");
+                if (supportedErrorFlags.test(SWAPCHAIN_STATUS_SURFACE_LOST_INDEX) && pErrorFlags!=nullptr)
+                    *pErrorFlags &= SWAPCHAIN_STATUS_SURFACE_LOST_BIT;
+                else
+                    throw std::runtime_error("Program failed to find a surface to draw.");
             }
             default:
             {
@@ -3927,13 +3910,6 @@ namespace VKI
                 throw std::runtime_error("Program outdated.");
             }
         }
-
-        /*
-        if (errorFlags.any() && pErrorFlags == nullptr)
-        {
-            if (errorFlags &= 
-        }
-        */
 
         return imgIndex;
     }

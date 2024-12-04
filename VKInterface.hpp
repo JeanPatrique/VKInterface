@@ -458,14 +458,14 @@ namespace VKI
 
     void queueSubmit(const VkQueue, const std::vector<SubmitInfo>&, const VkFence fence=VK_NULL_HANDLE);
     /**@brief Present an image to the display engine. @note pErrorFlags and supportedErrorFlags are used the same way than in acquireNextImage*/
-    void queuePresent(const VkQueue queue, 
-                      const uint32_t  imageIndicies, 
-                      const VkSwapchainKHR  swapchains,
-                      const std::vector<VkSemaphore> &semaphores,
-                      SwapchainStatusFlags* const pErrorFlags=nullptr,
-                      const SwapchainStatusFlags supportedErrorFlags = SwapchainStatusFlags(0)
+    void queuePresent(const VkQueue                     queue, 
+                      const uint32_t                    imageIndicies, 
+                      const VkSwapchainKHR              swapchains,
+                      const std::vector<VkSemaphore> &  semaphores,
+                      SwapchainStatusFlags* const       pErrorFlags=nullptr,
+                      const SwapchainStatusFlags        supportedErrorFlags = SwapchainStatusFlags(0)
                      );
-    /* support EOL.
+    /* Support EOL.
     // Present to multiple swapchains.
     void queuePresent(const VkQueue, 
                       const std::vector<std::pair<VkSwapchainKHR, uint32_t>> &swapchainImagesIndicies, 
@@ -483,10 +483,10 @@ namespace VKI
     SwapChainInfo getPhysicalDeviceSwapChainInfo(const VkPhysicalDevice, const VkSurfaceKHR, bool logInfo=true);
     bool isSwapChainInfoMatchMinimalRequirement(const SwapChainInfo&);
     /**@brief Clamp the currentExtent to the framebuffer of the windows.*/
-    void updateSwapchainExtents(const VkPhysicalDevice phyDevice, 
-                                const VkSurfaceKHR surface, 
-                                const WindowContext &wc,
-                                SwapChainInfo& swapChainInfo
+    void updateSwapchainExtents(const VkPhysicalDevice, 
+                                const VkSurfaceKHR,
+                                const WindowContext&,
+                                SwapChainInfo&
                                );
     /**@brief Adapt the swapchainInfo to the device (i.e. format/presentMode)*/
     void adaptSwapChainInfoToDevice(SwapChainInfo&, const VkPhysicalDevice, const VkSurfaceKHR);
