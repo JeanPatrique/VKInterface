@@ -1,3 +1,6 @@
+
+/* This file is a copy (hpp+cpp) of a tiny lib merged into one file.*/
+
 #ifndef LIBS_GAMEUTILS_LOGGER_HEADER
 #define LIBS_GAMEUTILS_LOGGER_HEADER
 
@@ -14,11 +17,14 @@
 //extern "C" {
 namespace GU
 {
-    /**@brief Classify the log entry. FATAL_ERROR is guaranty to be logged (force a flush to the log file).
+    /**@brief Classify the log entry. FATAL_ERROR guaranty the entry to be logged (force a flush to the log file).
      *  exemple :
      *      logFatalError("This entry will be in the log file.");
-     *      int *p=0;
+     *      int *p=nullptr;
      *      *p=10;
+     *      
+     *      $ cat logfile
+     *      This entry will be in the log file.
      */
     enum struct logLevel : uint8_t
     {
@@ -152,7 +158,7 @@ namespace GU
 				logsFile.close();
 				goto RETRY;
 			}
-			logsFile<<formatDate(false)<<" : "<<data.name<<" : "<<severityToString(data.severity)<<" : "<<data.message<<"\n";
+			logsFile<<formatDate(false)<<" : "<<data.name<<" ["<<severityToString(data.severity)<<"] -> "<<data.message<<"\n";
 			EntryCount++;
 		}
 		else if (recursiveFailure)

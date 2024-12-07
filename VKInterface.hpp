@@ -488,9 +488,12 @@ namespace VKI
                                 const WindowContext&,
                                 SwapChainInfo&
                                );
-    /**@brief Adapt the swapchainInfo to the device (i.e. format/presentMode)*/
-    void adaptSwapChainInfoToDevice(SwapChainInfo&, const VkPhysicalDevice, const VkSurfaceKHR);
-    //VkSwapchainKHR createSwapChain(const VulkanContext& context, VkSwapchainKHR oldSwapchain=VK_NULL_HANDLE);
+    /**@brief Remove unsupported format (from swapchainInfo.formats) and unsupported present mode (from swapchainInfo.presentModes).
+     *        This allow createSwapchain to call safely .front() on those two fields.
+     * @note This function doesn't clamp current extent to the minmax extent of the device.
+     *        Call updateSwapChainExtents for that.
+    */
+    void discardUnsuportedFormatsAndPresentModes(SwapChainInfo&, const VkPhysicalDevice, const VkSurfaceKHR);
     VkSwapchainKHR createSwapChain(const VkDevice, 
                                    const SwapChainInfo&,
                                    const VkSurfaceKHR,

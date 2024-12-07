@@ -594,7 +594,7 @@ namespace VKI
         clearNullMaxImageCount( physicalDeviceMinimalRequirement.swapChainInfo);
         context.swapChainInfo = physicalDeviceMinimalRequirement.swapChainInfo;
         updateSwapchainExtents(context.physicalDevice, context.surface, windowContext, context.swapChainInfo);
-        adaptSwapChainInfoToDevice(context.swapChainInfo, context.physicalDevice, context.surface);
+        discardUnsuportedFormatsAndPresentModes(context.swapChainInfo, context.physicalDevice, context.surface);
 
         context.swapChain = createSwapChain(context.device,
                                             context.swapChainInfo,
@@ -3526,62 +3526,56 @@ namespace VKI
         return ((lf.format == rf.format) && (lf.colorSpace == rf.colorSpace));
     }
 
-    // Adapt infos of a swapchaininfo to a device (i.e. format, present mode, and optimal imageCount);
-    // Note : doesn't clamp current extent to the minmax extent of the device.
-    //        Call clampSwapChainCurrentExtent for that.
-    void adaptSwapChainInfoToDevice(SwapChainInfo& swapChainInfo, const VkPhysicalDevice device, const VkSurfaceKHR surface)
+    void discardUnsuportedFormatsAndPresentModes(SwapChainInfo &swapchainInfo, 
+                                                 const VkPhysicalDevice phDevice, 
+                                                 const VkSurfaceKHR surface
+                                                )
     {
-        SwapChainInfo deviceSwapChainInfo = getPhysicalDeviceSwapChainInfo(device, surface, false);
-
-        swapChainInfo.capabilities = deviceSwapChainInfo.capabilities;
+        SwapChainInfo deviceSwapChainInfo = getPhysicalDeviceSwapChainInfo(phDevice, surface, false);
         
-        VkSurfaceFormatKHR format;
-        for (VkSurfaceFormatKHR targetFormat : swapChainInfo.formats)
+        std::vector<VkSurfaceFormatKHR> supportedFormats;
+        supportedFormats.reserve(swapchainInfo.formats.size());
+
+        for (VkSurfaceFormatKHR targetFormat : swapchainInfo.formats)
         {
             for (VkSurfaceFormatKHR deviceFormat : deviceSwapChainInfo.formats)
             {
                 if (targetFormat == deviceFormat)
-                {
-                    format = targetFormat;
-                    goto FORMAT_FOUND;
-                }
+                    supportedFormats.push_back(targetFormat);
             }
         }
-        throw std::logic_error("MAJOR LOGIC ERROR FAILURE : An impossible situation happended : when adapting "
-                               "the swap chain to a device. It appear that the device don't suport any of the "
-                               "format required by the dev/user swapchain."
-                               "Which mean that the device should have been discarded by isPhysicalDeviceMatchMinimalRequirement."
-                               "(More precisely isSwapChainInfoMatchMinimalRequirement)."
-                              );
-    FORMAT_FOUND:
-        swapChainInfo.formats.clear();
-        swapChainInfo.formats.resize(1);
-        swapChainInfo.formats[0] = format;
-        swapChainInfo.formats.shrink_to_fit();
+        if (supportedFormats.size() == 0)
+            throw std::logic_error("MAJOR LOGIC ERROR FAILURE : An impossible situation happended : when adapting "
+                                   "the swap chain to a device. It appear that the device don't suport any of the "
+                                   "format required by the dev/user swapchain. Which mean that the device should "
+                                   "have been discarded by isPhysicalDeviceMatchMinimalRequirement "
+                                   "(More precisely isSwapChainInfoMatchMinimalRequirement)."
+                                  );
+        swapchainInfo.formats.clear();
+        swapchainInfo.formats.assign(supportedFormats.begin(), supportedFormats.end());
+        swapchainInfo.formats.shrink_to_fit();
 
-        VkPresentModeKHR presentMode;
-        for (VkPresentModeKHR targetMode : swapChainInfo.presentModes)
+        std::vector<VkPresentModeKHR> supportedPresentModes;
+        supportedPresentModes.reserve(swapchainInfo.presentModes.size());
+
+        for (VkPresentModeKHR targetMode : swapchainInfo.presentModes)
         {
             for (VkPresentModeKHR deviceMode : deviceSwapChainInfo.presentModes)
             {
                 if (targetMode == deviceMode)
-                {
-                    presentMode = targetMode;
-                    goto PRESENTMODE_FOUND;
-                }
+                    supportedPresentModes.push_back(targetMode);
             }
         }
-        throw std::logic_error("MAJOR LOGIC ERROR FAILURE : An impossible situation happended : when adapting "
-                               "the swap chain to a device. It appear that the device don't suport any of the "
-                               "present mode required by the dev/user swapchain."
-                               "Which mean that the device should have been discarded by isPhysicalDeviceMatchMinimalRequirement."
-                               "(More precisely isSwapChainInfoMatchMinimalRequirement)."
-                              );
-    PRESENTMODE_FOUND:
-        swapChainInfo.presentModes.clear();
-        swapChainInfo.presentModes.resize(1);
-        swapChainInfo.presentModes[0] = presentMode;
-        swapChainInfo.presentModes.shrink_to_fit();
+        if (supportedPresentModes.size() == 0)
+            throw std::logic_error("MAJOR LOGIC ERROR FAILURE : An impossible situation happended : when adapting "
+                                   "the swap chain to a device. It appear that the device don't suport any of the "
+                                   "present mode required by the dev/user swapchain. Which mean that the device should "
+                                   "have been discarded by isPhysicalDeviceMatchMinimalRequirement. "
+                                   "(More precisely isSwapChainInfoMatchMinimalRequirement)."
+                                  );
+        swapchainInfo.presentModes.clear();
+        swapchainInfo.presentModes.assign(supportedPresentModes.begin(), supportedPresentModes.end());
+        swapchainInfo.presentModes.shrink_to_fit();
     }
 
     //VkSwapchainKHR createSwapChain(const VulkanContext& context, VkSwapchainKHR oldSwapchain)

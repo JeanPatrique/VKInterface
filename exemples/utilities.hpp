@@ -16,12 +16,10 @@ namespace GU
      * @warning The returned string is dynamically allocated and thus must be delete[].
      */
     char* duplicateString(const char*); // duplicate a c-string.
-                                        // WARNING : the returned string must be deleted.
-                                        // Usefull for the logger to write 'defered' string and save some performance.
 
-    /**@brief Read a file in binary and return it's content.
-     */
-    std::vector<char> readFile(const std::filesystem::path&);
+    /**@brief Read a file in binary and return it's content.*/
+    typedef std::vector<char> Bytecode;
+    Bytecode readFile(const std::filesystem::path&);
 
     /**@brief This function is a convenien way to record the frame rate.
      *        By calling this function with nullptr, the time difference between the last call is stored.
@@ -52,7 +50,7 @@ namespace GU
 	}
 
 
-    std::vector<char> readFile(const std::filesystem::path& location)
+    Bytecode readFile(const std::filesystem::path& location)
     {
         std::vector<char> buffer;
 
@@ -72,7 +70,7 @@ namespace GU
     {
         static std::chrono::duration<double, std::micro> deltaMean;
         static std::chrono::time_point<std::chrono::high_resolution_clock> t0 = std::chrono::high_resolution_clock::now();
-        static uint32_t meanSize=0; // how many cycle happend with retriving the frameRate.
+        static uint32_t meanSize=0;
 
         std::chrono::time_point<std::chrono::high_resolution_clock> t1 = std::chrono::high_resolution_clock::now();
 

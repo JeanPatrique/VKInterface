@@ -75,15 +75,17 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
     minRqd.swapChainInfo.capabilities.currentTransform        = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
     minRqd.swapChainInfo.capabilities.supportedCompositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;// Ignore alpha.
     minRqd.swapChainInfo.currentCompositeAlpha                = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-    minRqd.swapChainInfo.capabilities.supportedUsageFlags     = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; // VK_IMAGE_USAGE_TRANSFER_DST_BIT
+    minRqd.swapChainInfo.capabilities.supportedUsageFlags     = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT 
+                                                              | VK_IMAGE_USAGE_TRANSFER_DST_BIT
+                                                                ;
 
     // Note on format nomenclature : https://stackoverflow.com/questions/59628956/what-is-the-difference-between-normalized-scaled-and-integer-vkformats#answer-59630187
     minRqd.swapChainInfo.formats.resize(1);
     minRqd.swapChainInfo.formats[0] = {VK_FORMAT_B8G8R8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR };
     minRqd.swapChainInfo.presentModes.resize(3);
-    minRqd.swapChainInfo.presentModes[0] = VK_PRESENT_MODE_FIFO_KHR;      // v-sync.
-    minRqd.swapChainInfo.presentModes[1] = VK_PRESENT_MODE_MAILBOX_KHR;   // aka no-tearing immediate mode.
-    minRqd.swapChainInfo.presentModes[2] = VK_PRESENT_MODE_IMMEDIATE_KHR; // unlimit frame rate : may cause tearing.
+    minRqd.swapChainInfo.presentModes[0] = VK_PRESENT_MODE_MAILBOX_KHR;   // aka immediate mode without tearing.
+    minRqd.swapChainInfo.presentModes[1] = VK_PRESENT_MODE_FIFO_KHR;      // v-sync.
+    minRqd.swapChainInfo.presentModes[2] = VK_PRESENT_MODE_IMMEDIATE_KHR; // unlimited frame rate : may cause tearing.
 
     // Queues.
     minRqd.queueInfos.resize(1);
@@ -101,7 +103,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
     minRqd.queueInfos[0].cmdPoolInfos[0].commandBufferInfos.resize(1);
     minRqd.queueInfos[0].cmdPoolInfos[0].commandBufferInfos[0].primaryCount = 2; // Two primary command buffer are required.
     minRqd.queueInfos[0].cmdPoolInfos[0].commandBufferInfos[0].secondaryCount = 0;
-    minRqd.queueInfos[0].cmdPoolInfos[0].commandBufferInfos[0].poolIndex = 0; // i.e. From wich pool to allocate from.
+    minRqd.queueInfos[0].cmdPoolInfos[0].commandBufferInfos[0].poolIndex = 0;
 
     minRqd.instanceExtensions = {/*VK_REQUIRED_INSTANCE_EXTENSION_NAME*/};
     minRqd.deviceExtensions   = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
