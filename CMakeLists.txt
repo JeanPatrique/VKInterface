@@ -49,27 +49,23 @@ endif()
 if (${VKI_BUILD_EXEMPLE_EXECUTABLES})
 
     message("-- Building exemples.")
-
     project("Vki_demo")
 
     include_directories("${CMAKE_CURRENT_SOURCE_DIR}/exemples")
-    set(EXEMPLE_SOURCE_DIR
-        "simple_triangle"
-    )
 
-    foreach (SOURCE_NAME IN LISTS EXEMPLE_SOURCE)
-        add_subdirectory(${SOURCE_NAME} "${CMAKE_CURRENT_SOURCE_DIR}/exemples/${EXEMPLE_SOURCE_DIR}/CMakeLists.txt")
-        #add_executable(${SOURCE_NAME} "${CMAKE_CURRENT_SOURCE_DIR}/exemples/${EXEMPLE_SOURCE}.cpp")
-        #target_link_libraries(${SOURCE_NAME} 
-        #    VKInterface 
-        #    glfw
-        #    pthread
-        #    dl
-        #    vulkan
-        #    X11
-        #    Xxf86vm
-        #    Xi
-        #)
-    endforeach()
+    add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/exemples/simple_triangle")
+    #add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/exemples/simple_quad")
+    
+    #add_executable(${source_name} "${cmake_current_source_dir}/exemples/${exemple_source}.cpp")
+    #target_link_libraries(${source_name} 
+    #    vkinterface 
+    #    glfw
+    #    pthread
+    #    dl
+    #    vulkan
+    #    x11
+    #    xxf86vm
+    #    xi
+    #)
 endif()
 

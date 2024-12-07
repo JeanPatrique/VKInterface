@@ -534,7 +534,7 @@ namespace VKI
                               const VkSemaphore, 
                               const VkFence, 
                               uint64_t timeout=UINT64_MAX,
-                              SwapchainStatusFlags* const pErrorFlags=nullptr,
+                              SwapchainStatusFlags* pErrorFlags=nullptr,
                               const SwapchainStatusFlags supportedErrorFlags = SwapchainStatusFlags(0)
                              );
 
@@ -551,7 +551,7 @@ namespace VKI
     //TODO Add a function std::vector<VkPipelines> createGraphicsPipelines(...); // and pack pipelines creation into a 
     //     single vkCreateGraphicsPipelines call. 
     VkPipelineLayout createPipelineLayout(const VkDevice, const PipelineInfo&);
-    void destroyPipelineInfoShaderModules(const VkDevice, PipelineInfo&) noexcept; // TODO : what does that mean ??
+    void destroyPipelineInfoShaderModules(const VkDevice, PipelineInfo&) noexcept;
     void destroyShaderModule(const VkDevice, std::shared_ptr<VkShaderModule>&) noexcept;
     void destroyShaderModule(const VkDevice, VkShaderModule&) noexcept;
     VkShaderModule createShaderModule(const VkDevice, const std::vector<char>& spirvCode);
@@ -629,12 +629,12 @@ namespace VKI
     /**@brief Wait for All|One fence(s) to be signaled to continue execution.
      * @return bool return false if the timeout reach zero, true if a/all fence(s) have been signaled.
      */
-    bool waitFences(const VkDevice, const std::vector<VkFence>&, bool waitAll=true, uint64_t timeout=UINT64_MAX);
+    bool waitFences(const VkDevice, const std::vector<VkFence>&, bool waitAll=true, uint64_t timeout=UINT64_MAX, bool logInfo=false);
 
     /**@brief Wait for one fence to be signaled to continue execution.
      * @return bool return false if the timeout reach zero, true if the fence have been signaled.
      */
-    bool waitFence (const VkDevice, const VkFence&, uint64_t timeout=UINT64_MAX);
+    bool waitFence (const VkDevice, const VkFence&, uint64_t timeout=UINT64_MAX, bool logInfo=false);
 
     void resetFence(const VkDevice, const std::vector<VkFence>&);
     void resetFence(const VkDevice, const VkFence);

@@ -11,7 +11,7 @@
 #include "logger.hpp"    // my custom logger for this exemple.
 #include "utilities.hpp" // VKI isn't versatile enough to be stand-alone.
 
-#define HEAVY_DEBUG false // flush every log entries (python speed).
+#define HEAVY_DEBUG true // flush every log entries (python speed but back-trace segfault).
 
 //Helper functions.
 void drawCall(VKI::VulkanContext &vContext, VKI::WindowContext &wContext);
@@ -124,9 +124,9 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 
     // Loading resources :
     mainScope.logv("Loading quad.vert.spv .");
-    std::vector<char> quadVertex    = GU::readFile("Build/src/Cellular_Automata/runtime/shaders/quad.vert.spv");
+    std::vector<char> quadVertex    = GU::readFile("./shaders/quad.vert.spv");
     mainScope.logv("Loading quad.frag.spv .");
-    std::vector<char> quadFragment  = GU::readFile("Build/src/Cellular_Automata/runtime/shaders/quad.frag.spv");
+    std::vector<char> quadFragment  = GU::readFile("./shaders/quad.frag.spv");
 
     // Creating the graphics pipeline and render pass.
     VKI::GraphicsContext gContext;
@@ -214,21 +214,26 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 
     mainScope.logv("Main loop begin.");
 
+
     uint32_t frameCount = 0;
     while (!VKI::windowShouldClose(wContext))
     {
         glfwPollEvents();
 
         if (wContext.eventWindowResized)
+        {
             reCreateSwapchain(vContext, wContext);
+            wContext.eventWindowResized = false;
+        }
+
         drawCall(vContext, wContext);
 
-        // display frame rate.
+        // display frame rate every 16 frames.
         if (frameCount >= 16)
         {
             double frameRate;
             GU::countFrameRate(&frameRate);
-            std::cout<<frameRate<<" fps\r"<<std::flush;
+            std::cout<<frameRate<<" fps\r"<<std::flush; // Yes I know.
             frameCount=0;
         }
         else
@@ -255,8 +260,9 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 void drawCall(VKI::VulkanContext &vContext, VKI::WindowContext &wContext)
 {
     static std::vector<VKI::SubmitInfo> submitInfos(2);
-    const VKI::SwapchainStatusFlags supportedSwapchainErrors = VKI::SWAPCHAIN_STATUS_OUT_OF_DATE_BIT |
-                                                               VKI::SWAPCHAIN_STATUS_SUBOPTIMAL_BIT;
+    const VKI::SwapchainStatusFlags supportedSwapchainErrors = VKI::SWAPCHAIN_STATUS_OUT_OF_DATE_BIT    |
+                                                             //VKI::SWAPCHAIN_STATUS_SURFACE_LOST_BIT   |
+                                                               VKI::SWAPCHAIN_STATUS_SUBOPTIMAL_BIT     ;
     VKI::SwapchainStatusFlags swapchainErrors;
 
     static uint32_t currentFrame = 1; // Tell which of the two in flight frame buffer are use.
@@ -319,15 +325,17 @@ void drawCall(VKI::VulkanContext &vContext, VKI::WindowContext &wContext)
                      );
 
     if (swapchainErrors.any())
+    {
         reCreateSwapchain(vContext, wContext);
+    }
 }
 
 void reCreateSwapchain(VKI::VulkanContext &vContext, VKI::WindowContext &wContext)
 {
-    //mainScope.logi("Recreating the swapchain begin.");
-    //enableVkiInfoLogs();
+    mainScope.logi("Recreating the swapchain begin.");
+    enableVkiLogs();      //
+    disableVkiInfoLogs(); // Only capture warnings/error.
 
-    //VKI::resetFence(vContext.device, vContext.fences[SUBMIT_END + currentFrameIndex]);// Reset the fence so the next draw call won't block.
     VKI::waitDeviceBecomeIdle(vContext.device);
 
     // Destroy all swapchain related objects.
@@ -341,8 +349,13 @@ void reCreateSwapchain(VKI::VulkanContext &vContext, VKI::WindowContext &wContex
 
     // create a new swapchain.
 
-    // Store the new extend :
+RESIZE_SWAPCHAIN: // Store the new extend :
     updateSwapchainExtents(vContext.physicalDevice, vContext.surface, wContext, vContext.swapChainInfo); 
+    if ((vContext.swapChainInfo.capabilities.currentExtent.height==0) || (vContext.swapChainInfo.capabilities.currentExtent.width==0))
+    {
+        glfwWaitEvents(); // Since there is no surface to render to, we wait for a resize event.
+        goto RESIZE_SWAPCHAIN;
+    }
     vContext.swapChain = createSwapChain(vContext.device, vContext.swapChainInfo, vContext.surface);
 
     vContext.swapchainImages = VKI::fetchImagesFromSwapChain(vContext.device, vContext.swapChain);
@@ -364,8 +377,8 @@ void reCreateSwapchain(VKI::VulkanContext &vContext, VKI::WindowContext &wContex
                                                                   );
     }
 
-    //disableVkiInfoLogs();
-    //mainScope.logi("Recreating the swapchain end.");
+    disableVkiInfoLogs();
+    mainScope.logi("Recreating the swapchain end.");
 }
 
 inline void enableVkiInfoLogs()
