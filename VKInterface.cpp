@@ -3173,7 +3173,29 @@ namespace VKI
         }
     }
 
-    /* Support EOL.
+    bool waitQueueBecomeIdle(const VkQueue queue) noexcept
+    {
+        logInfoCB("Start waiting for the queue to be idle.");
+        VkResult error = vkQueueWaitIdle(queue);
+        switch (error)
+        {
+            case (VkResult::VK_SUCCESS):
+                logInfoCB("waitQueueBecomeIdle successfully returned.");
+                return true;
+            case (VkResult::VK_ERROR_OUT_OF_HOST_MEMORY):
+            case (VkResult::VK_ERROR_OUT_OF_DEVICE_MEMORY):
+                logErrorCB("waitQueueBecomeIdle falied : out of memory.");
+                return false;
+            case (VkResult::VK_ERROR_DEVICE_LOST):
+                logErrorCB("waitQueueBecomeIdle failed : device lost -> this might be an use after free !");
+                return false;
+            default:
+                logFatalErrorCB("waitQueueBecomeIdle failed : program out dated.");
+                return false;
+        }
+    }
+
+    /* Not supported.
     void queuePresent(const VkQueue queue, 
                       const std::vector<std::pair<VkSwapchainKHR, uint32_t>> &swapchainImagesIndices, 
                       const std::vector<VkSemaphore> &semaphores,
@@ -3754,20 +3776,25 @@ namespace VKI
      * @return true if the function doesn't abort before the device became idle.
      *              The errors that can cause this function to fail will make crash the whole program.
      **/
-    bool waitDeviceBecomeIdle(const VkDevice device)
+    bool waitDeviceBecomeIdle(const VkDevice device) noexcept
     {
-        logInfoCB("Start waiting for the device to be idle."); // May include the device's name isn't a bad idea.
-        lastApiError = vkDeviceWaitIdle(device);
-        if (lastApiError == VkResult::VK_SUCCESS)
+        logInfoCB("Start waiting for the device to be idle.");
+        VkResult error = vkDeviceWaitIdle(device);
+        switch (error)
         {
-            logInfoCB("Stop waiting for the device to be idle.");
-            return true;
-        }
-        else
-        {
-            logFatalErrorCB("Something when wrong when waiting for the device to be idle.");
-            // error are out of memory and lost device.
-            return false;
+            case (VkResult::VK_SUCCESS):
+                logInfoCB("waitDeviceBecomeIdle successfully returned.");
+                return true;
+            case (VkResult::VK_ERROR_OUT_OF_HOST_MEMORY):
+            case (VkResult::VK_ERROR_OUT_OF_DEVICE_MEMORY):
+                logErrorCB("waitDeviceBecomeIdle falied : out of memory.");
+                return false;
+            case (VkResult::VK_ERROR_DEVICE_LOST):
+                logErrorCB("waitDeviceBecomeIdle failed : device lost -> this might be an use after free !");
+                return false;
+            default:
+                logFatalErrorCB("waitDeviceBecomeIdle failed : program out dated.");
+                return false;
         }
     }
 

@@ -539,7 +539,8 @@ namespace VKI
                       SwapchainStatusFlags* const       pErrorFlags=nullptr,
                       const SwapchainStatusFlags        supportedErrorFlags = SwapchainStatusFlags(0)
                      );
-    /* Support EOL.
+    bool waitQueueBecomeIdle(const VkQueue) noexcept;// return true if the queue is empty.
+    /* Not supported.
     // Present to multiple swapchains.
     void queuePresent(const VkQueue, 
                       const std::vector<std::pair<VkSwapchainKHR, uint32_t>> &swapchainImagesIndices, 
@@ -552,6 +553,7 @@ namespace VKI
     /// Logical devices:
 
     VkDevice createLogicalDevice(const VkPhysicalDevice, const std::vector<QueueInfo>, const std::vector<const char*> &deviceExtensionsNames);
+    bool waitDeviceBecomeIdle(const VkDevice) noexcept; // return true if device have no more operation in its queues.
 
     /// SwapChain
     SwapChainInfo getPhysicalDeviceSwapChainInfo(const VkPhysicalDevice, const VkSurfaceKHR, bool logInfo=true);
@@ -780,7 +782,6 @@ namespace VKI
     void resetFence(const VkDevice, const VkFence);
 
     /// Others :
-    bool waitDeviceBecomeIdle(const VkDevice); // i.e. wait until no more operation/commands are running on the device.
     constexpr VkBool32 boolToVkBool32(const bool b) // TODO create a custom type cast to use static_cast<>. 
     { return (b) ? VK_TRUE : VK_FALSE;}
   /*constexpr*/ bool operator==(const QueueInfo&,const QueueInfo&);
