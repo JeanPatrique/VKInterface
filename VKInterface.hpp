@@ -1,16 +1,19 @@
 #ifndef VKINTERFACE_HEADER 
 #define VKINTERFACE_HEADER 
 
+/* If you're here, it might be cause I didn't made a clean docs.
+ * To get an overview of this lib, read the structure defined right after.
+ * Then search for all '///'. Thoses are chapter-like section that group functions by topics (e.g. /// Queue Family).
+ */
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
-/*
 #define GLM_FORCE_RADIANS
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
-#include <glm/vec4.hpp>
-#include <glm/mat4x4.hpp>
-*/
+//#define GLM_FORCE_DEPTH_ZERO_TO_ONE
+//#include <glm/vec4.hpp>
+//#include <glm/mat4x4.hpp>
+#include <glm/glm.hpp>
 
 #include "libgmp/gmpxx.h" // The GMP library is overkill for it use in VKI. 
                           // It's used to compute the score/ranking of every 
@@ -26,27 +29,31 @@
 #include <string>
 #include <sstream>
 #include <vector>
+#include <array>
 #include <set>
 #include <optional>
 #include <utility> // <3 std::pair;
 #include <bitset>
 
-#ifndef VKI_MAX_QUEUE_COUNT_PER_FAMILY 
-#define VKI_MAX_QUEUE_COUNT_PER_FAMILY 16 /*uint8_t (aka 0-255 otherwise UB)*/
-#endif//VKI_MAX_QUEUE_COUNT_PER_FAMILY
+#define VKI_MAX_QUEUE_COUNT_PER_FAMILY 16 /*uint8_t  If >255 : UB */
+#define VKI_IMAGE_COUNT_IF_UNLIMITED   16 /*uint32_t How many images to create in the swapchain has unlimited imgs count.*/
 
-#ifndef VKI_IMAGE_COUNT_IF_UNLIMITED
-#define VKI_IMAGE_COUNT_IF_UNLIMITED 64 /*uint32_t how many images to create in the swapchain if unlimited (max=0).*/
-#endif//VKI_IMAGE_COUNT_IF_UNLIMITED 
+/* Macro-options :
+#define VKI_DISABLE_LOGS_CALL // If defined, all call to the logs functions are remove. // TODO !
+#define VKI_ENABLE_DEBUG_LOGS // If defined, this include more logs calls to inspect some functions behavior.
+*/
 
 /**@brief VulKanInterface : All you need to draw a quad to the screen.
  *        *Info structure are intented to be fill by the user (unless specified).
- * @note VKI isn't fully thread-safe yet.
  * @note VKI use glfw to be cross platform but can be changed if needed (the required change have been keept at a minimum).
  * @note The registerLogs* callback should be called before any other function (even init).
  * @warning VKI doesn't perform any test on user provided value (almost).
  *          i.e. if you set minImageCount=0 (in the swapchainInfo minimal requirement) no warnings will be displayed 
  *          and the behavior is UB !
+ *
+ * 
+ *
+ *
  */
 namespace VKI
 {
@@ -74,9 +81,9 @@ namespace VKI
 	{
         GLFWwindow* window;
 
-        bool manualShouldClose      = false; // Allow user to manually make windowShouldClose return true if set.
-        bool forceWindowNotClose    = true;  // If set to false, windowShouldClose won't EVER return true.
-        // Computed as : (glfwWindowShouldClose() || manualShouldClose) && forceWindowNotClose;
+        bool manualShouldClose = false; // Allow user to manually make windowShouldClose return true if set.
+        bool forceWindowOpen   = true;  // If set to false, windowShouldClose won't ever return true.
+        // Computed as : (glfwWindowShouldClose() || manualShouldClose) && forceWindowOpen;
 
         bool eventWindowResized=false; // Set to true to indicate that the window need to be resized.
 	};
@@ -114,12 +121,12 @@ namespace VKI
     /**@note QueueInfo::priorities size is limited to VKI_MAX_QUEUE_COUNT_PER_FAMILY (default 16) */
     struct QueueInfo 
     {
-        uint32_t familyIndex; // Filled by findQueuefamilyIndicies.
-        uint8_t count  = 1;   // 0=UB.
-        float priorities[VKI_MAX_QUEUE_COUNT_PER_FAMILY] = {0.0f};
+        uint32_t familyIndex = -1; // Filled by findQueuefamilyIndices.
+        uint8_t  count       =  1; // 0=UB. /* TODO 0 == max.*/ // if count>VKI_MAX_QUEUE_COUNT_PER_FAMILY -> UB.
+        float    priorities[VKI_MAX_QUEUE_COUNT_PER_FAMILY] = {0.0f};
 
-        VkQueueFlags operations = 0;
-        bool isPresentable  = false; // Does the queue must be presentable.
+        VkQueueFlags operations     = 0;
+        bool         isPresentable  = false; // aka shareTheSwapchain. // TODO
 
         std::vector<CommandInfo> cmdPoolInfos;
     };
@@ -127,7 +134,7 @@ namespace VKI
     struct QueueFamily
     {
         QueueInfo info;
-        std::vector<VkQueue> queues; // (size=info.count);
+        std::vector<VkQueue> queues;
         std::vector<Command> commands;
     };
 
@@ -215,9 +222,9 @@ namespace VKI
         bool enablePrimitiveRestart = true; // If enabled, index -1 will break *_STRIP primitives.
 
         // Warnings, a feature must be enabled to use multiple viewport.
-        std::vector<VkViewport> viewports;
-        std::vector<VkRect2D>   scissors; // TODO : TOFIND : is size must be eq to viewport.size() ?
-
+        std::vector<VkViewport> viewports; // Can be empty if set as dynamic state.
+        std::vector<VkRect2D>   scissors;  // Same.
+                                           // TODO : TOFIND : is size must be eq to viewport.size() ?
         // Rasterization options:
         //physicalDeviceMinimalRequirement.features.depthClamp; // to enable depthClamp.
         bool rasterizerDiscardEnable  = false; // Disable rasterizer (disable writing fragments to a frame buffer).
@@ -308,13 +315,56 @@ namespace VKI
         std::vector<GraphicsContext_pipeline>   pipelines;
     };
 
+    /*
+    struct ComputePipelineContext // :D
+    {
+    };
+    */
+
+    struct BufferInfo
+    {
+        VkDeviceSize          size;
+        VkDeviceSize          offset= 0;
+        VkBufferUsageFlags    usage = 0;
+        VkBufferCreateFlags   flags = 0;
+    #ifdef VK_VERSION_1_4
+        VkBufferUsageFlags2   usage2    = 0;
+        bool                  useUsage2 = false;
+    #else
+        const bool            useUsage2 = false;
+    #endif
+
+        VkMemoryPropertyFlags memoryProperties=VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
+        std::vector<uint32_t> queueFamilyIndicesSharingTheBuffer;
+        bool                  exclusiveMode=true;// () ? VK_SHARING_MODE_EXCLUSIVE : VK_SHARING_MODE_CONCURRENT;
+    };
+
+    struct Buffer
+    {
+        VkBuffer            buffer = VK_NULL_HANDLE;
+        VkDeviceMemory      memory = VK_NULL_HANDLE;
+
+        void*               mappedAddr = nullptr; // Only if VISIBLE !
+        const BufferInfo    info;
+    };
+
+    /* TODO
+    struct BufferPair // Simple primitive that ease the data transfer of a host local and a device local buffers.
+    {
+        Buffer hostBuffer,
+               deviceBuffer;
+    };
+    */
+
     /**@brief OPTIONAL struct that bundle all resources that your application could/would need.*/
     struct VulkanContext
     {
         VkInstance instance;
 
-        VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
-        VkDevice device                 = VK_NULL_HANDLE;
+        VkPhysicalDevice physicalDevice  = VK_NULL_HANDLE;
+        VkDevice         device          = VK_NULL_HANDLE;
+        VkPhysicalDeviceMemoryProperties physicalDeviceMemoryProperties;
 
         std::vector<QueueFamily> queueFamilies;
 
@@ -326,12 +376,14 @@ namespace VKI
         std::vector<VkImageView>    swapchainImageViews;
         std::vector<VkFramebuffer>  swapchainFramebuffers; // createVulkanContext won't initialize this,
                                                            // unless graphicsContexts isn't empty (TODO).
-
-        // TODO create a function createGraphicsContext to let createVulkanContext call it.
-        std::vector<GraphicsContext> graphicsContexts; // Fill the GraphicsContext.renderPassInfo and pipelines[x].info;
-
         std::vector<VkSemaphore> semaphores;
         std::vector<VkFence>     fences;
+
+        // Below this point, createVulkanContext won't initialise more field.
+
+        std::vector<GraphicsContext> graphicsContexts; // Fill the GraphicsContext.renderPassInfo and pipelines[x].info;
+
+        std::vector<Buffer> buffers;
 
         // Those two lines below are only used by VKI, you should ignore them.
        #ifdef VKI_ENABLE_VULKAN_VALIDATION_LAYERS
@@ -339,6 +391,7 @@ namespace VKI
         VkDebugUtilsMessengerEXT debugCallbackHandle;
         bool isDebugCallbackHandleValid =false; // debugCallbackHandle can fail at creation,
                                                 // So it must not be destroyed if it happend.
+                                                // TODO Can't we just test for VK_NULL_HANDLE ?
        #endif
     };
 
@@ -350,6 +403,13 @@ namespace VKI
         VkPhysicalDeviceFeatures    features;
         std::vector<QueueInfo>      queueInfos; // queue info to be created (.index are ignored);
                                                 // note : VKI doesn't support protected queue.
+
+    #ifdef VK_VERSION_1_4
+        // TODO add a VkDeviceQueueGlobalPriority to set systeme wide priority.
+        // vulkan spec says that priorities above MEDIUM might require higher priviledge.
+        // This will cause the VK_ERROR_NOT_PERMITED (check the queue creation process accordingly).
+    #endif
+
         SwapChainInfo swapChainInfo; // minimal requirement for the swapchain.
                                      // note : it is possible (but untested) to set maxImageCount to 0.
 
@@ -379,15 +439,15 @@ namespace VKI
     VkInstance createInstance();
     VkDebugUtilsMessengerEXT  setupInstanceDebugCallback();
     VulkanContext createVulkanContext(
-            const VkInstance, 
-            const WindowContext,
-            const uint32_t semaphoreCount = 0,
-            const uint32_t fenceCount = 0,
-            const VkPhysicalDevice physicalDevice = VK_NULL_HANDLE // VK_NULL_HANDLE => auto best device.
+            const                           VkInstance, 
+            const                           WindowContext,
+            const uint32_t                  semaphoreCount = 0,
+            const uint32_t                  fenceCount     = 0,
+            const bool                      fenceSignaled  = true,
+            const VkPhysicalDevice          physicalDevice = VK_NULL_HANDLE // VK_NULL_HANDLE => auto select best device.
             );
     void destroyVulkanContext(VulkanContext&, bool waitDeviceIdle=true);
 
-    //void setupVkQueues(VulkanContext&);// Deprecated !
     std::vector<VkQueue> getQueueFromDevice(const VkDevice, const QueueInfo&); // Fetch queues from a device.
 
     uint32_t getInstanceApiVersion();
@@ -419,7 +479,9 @@ namespace VKI
 #else
     const bool isValidationLayersEnabled = true;
 
+    #ifndef VKI_NB_VULKAN_VALIDATION_LAYERS
     #define VKI_NB_VULKAN_VALIDATION_LAYERS 1
+    #endif
 
     const std::array<VkLayerProperties, VKI_NB_VULKAN_VALIDATION_LAYERS> validationLayers = {
         createVkLayerProperties(u8"VK_LAYER_KHRONOS_validation", 0),
@@ -448,18 +510,30 @@ namespace VKI
     // This function use the GMP lib to compare scores.
     VkPhysicalDevice pickBestPhysicalDevice(const std::vector<VkPhysicalDevice>& devices, const VkSurfaceKHR, bool logInfo=true);
 
-    /// Family queues:
+    /// Queue Family :
     std::vector<VkQueueFamilyProperties> listPhysicalDeviceQueueFamilyProperties(const VkPhysicalDevice, bool logInfo=true);
-    std::vector<QueueInfo> findQueueFamilyIndices(const VkPhysicalDevice, const VkSurfaceKHR, const std::vector<QueueInfo>);
-    bool areRequiredFamilyQueueAvailable(const VkPhysicalDevice, const VkSurfaceKHR) noexcept;
+    std::vector<QueueInfo> getPhysicalQueueInfos(const VkPhysicalDevice, 
+                                                 const VkSurfaceKHR      surface=VK_NULL_HANDLE, // surface is optional.
+                                                 bool logInfo=true);
+    VkQueueFlagBits getQueueMainOperation(const VkQueueFlags) noexcept; // not used, delete it.
+    // The next two function are helper function you can ignore them.
+    constexpr   bool     isQueueFamilySuitable(const QueueInfo& physicalQueueFamily, const QueueInfo& requiredQueue);
+  /*constexpr*/ unsigned getDistanceBetweenQueueOperations(const VkQueueFlags, const VkQueueFlags); // until C++20.
+    /**@brief Assign a bunch of specified queue to a family available on the physical device.*/
+    std::vector<QueueInfo> findQueueFamilyIndices(const VkPhysicalDevice, 
+                                                  const std::vector<QueueInfo>&,
+                                                  const VkSurfaceKHR surface=VK_NULL_HANDLE,// Offline rendering.
+                                                  const bool         logInfo = true
+                                                 );
+    bool areRequiredFamilyQueueAvailable(const VkPhysicalDevice, const VkSurfaceKHR);
     VkDeviceQueueCreateInfo populateDeviceQueueCreateInfo(const uint32_t index, const float priorities[VKI_MAX_QUEUE_COUNT_PER_FAMILY], const uint8_t count=1);
 
-    std::string VkQueueFlagBitsToString(VkQueueFlags flags);
+    std::string queueFlagBitsToString(VkQueueFlags flags) noexcept;
 
     void queueSubmit(const VkQueue, const std::vector<SubmitInfo>&, const VkFence fence=VK_NULL_HANDLE);
     /**@brief Present an image to the display engine. @note pErrorFlags and supportedErrorFlags are used the same way than in acquireNextImage*/
     void queuePresent(const VkQueue                     queue, 
-                      const uint32_t                    imageIndicies, 
+                      const uint32_t                    imageIndices, 
                       const VkSwapchainKHR              swapchains,
                       const std::vector<VkSemaphore> &  semaphores,
                       SwapchainStatusFlags* const       pErrorFlags=nullptr,
@@ -468,7 +542,7 @@ namespace VKI
     /* Support EOL.
     // Present to multiple swapchains.
     void queuePresent(const VkQueue, 
-                      const std::vector<std::pair<VkSwapchainKHR, uint32_t>> &swapchainImagesIndicies, 
+                      const std::vector<std::pair<VkSwapchainKHR, uint32_t>> &swapchainImagesIndices, 
                       const std::vector<VkSemaphore>&, // Wait for semaphores.
                       SwapchainStatusFlags* const pErrorFlags=nullptr,
                       const SwapchainStatusFlags supportedErrorFlags = SwapchainStatusFlags(0)
@@ -570,7 +644,7 @@ namespace VKI
     void destroyPipeline(const VkDevice, VkPipeline&) noexcept;
     void destroyGraphicsContext(const VkDevice, GraphicsContext&) noexcept;
 
-    // Framebuffers.
+    /// Framebuffers.
     VkFramebuffer createFramebuffer(const VkDevice,
                                     const uint32_t width,
                                     const uint32_t height,
@@ -579,7 +653,68 @@ namespace VKI
                                     const VkFramebufferCreateFlags flags=0);
     void destroyFrameBuffer(const VkDevice, VkFramebuffer&) noexcept;
 
-    // Commands.
+    /// Buffers.
+    
+    // Warnings : createBuffer won't allocate and bind memory to the buffer : call allocateBuffers.
+    std::vector<Buffer> createBuffers(const VkDevice, std::vector<BufferInfo>&);
+  /*VkBuffer createBuffer(const VkDevice              device,
+                          const uint64_t              size,
+                          const VkBufferUsageFlags    usages,
+                          const std::vector<uint32_t> accessingQueues,
+                          const bool                  exclusiveAccessMode=true,
+                          const VkBufferCreateFlags   flags=0
+                         );
+    */
+    void destroyBuffer(const VkDevice, Buffer&) noexcept;
+    void destroyBuffer(const VkDevice, VkBuffer&) noexcept;
+
+
+    /**@brief Allocate memory to a buffer.
+     * @return true on success, throw a runtime_error if out of memory and false if no suitable heap is found.
+     *         On Errors, the buffer should be left untouched.
+     * @warning Doesn't support multi-instance memory pages.
+     */
+    bool allocateBuffer(const VkDevice, 
+                              Buffer&, 
+                        const VkPhysicalDeviceMemoryProperties&, 
+                        const bool bindMemoryToBuffer=true, // call bindBufferMemory(...);
+                        const bool logInfo=true
+                       );
+    VkDeviceMemory allocateMemory(const VkDevice,
+                                  const VkDeviceSize,
+                                  const uint32_t     memoryTypeIndex
+                                 );
+    void freeMemory(const VkDevice, VkDeviceMemory&) noexcept;
+
+    void bindBufferMemory(const VkDevice, VkBuffer, VkDeviceMemory, const VkDeviceSize memoryOffset);
+
+    void logMemoryHeapInfo(const VkPhysicalDeviceMemoryProperties&, const uint32_t heapIndex); // log infos about a heap.
+    void logMemoryInfo(const VkPhysicalDeviceMemoryProperties&); // log infos about all heaps.
+
+    void* mapMemory(const VkDevice           device,
+                    const VkDeviceMemory     memory,
+                    const VkDeviceSize       offset=0,
+                    const VkDeviceSize       size=VK_WHOLE_SIZE
+                   );
+    void mapBuffer(const VkDevice, Buffer&);
+    void unmapBuffer(const VkDevice, Buffer&);
+    // void vkUnmapMemory(VkDevice,VkDeviceMemory);
+
+    // Note! writebuffer will map the buffer if not already mapped.
+    void writeBuffer(const VkDevice,
+                           Buffer&,
+                     const void*,
+                     const size_t maxSize=VK_WHOLE_SIZE // of the buffer.
+                    );
+
+    void flushBuffers(const VkDevice,
+                      const std::vector<Buffer>&,
+                      const bool flushRead=true,
+                      const bool flushWrite=true
+                     );
+    std::vector<VkBuffer> listBuffersHandle(const std::vector<Buffer>& buffers); // usefull for cmdBingVertexBuffer;
+
+    /// Commands.
     void createCommandFromCommandInfo(const VkDevice, const uint32_t queueFamilyIndex, const CommandInfo&, Command&);
 
     VkCommandPool createCommandPool(const VkDevice, const VkCommandPoolCreateFlags, const uint32_t queueFamilyIndex);
@@ -597,7 +732,6 @@ namespace VKI
                                                       const bool isSecondary
                                                      );
 
-    // Command calls and draw calls.
     /**@brief Begin the record of a command buffer.
      * @warning This function has a UB if VkCommandBuffer is a SECONDARY buffer.*/
     void cmdBeginRecordCommandBuffer(VkCommandBuffer,
@@ -618,8 +752,11 @@ namespace VKI
                          const VkSubpassContents
                         );
     void cmdBindPipeline(VkCommandBuffer, const VkPipeline, const VkPipelineBindPoint bindPoint=VK_PIPELINE_BIND_POINT_GRAPHICS);
+    //void cmdBindVertexBuffers(VkCommandBuffer, const std::vector<VkBuffer>&); // just use vkCmdBindVertexBuffer.
     void cmdDraw(VkCommandBuffer, uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertexIndex, uint32_t firstInstanceIndex);
     void cmdEndRenderPass(VkCommandBuffer cmdBuffer);
+
+    /// Synchronisation :
 
     VkSemaphore createSemaphore (const VkDevice);
     VkFence     createFence     (const VkDevice, bool startSignaled=false);
@@ -644,8 +781,9 @@ namespace VKI
 
     /// Others :
     bool waitDeviceBecomeIdle(const VkDevice); // i.e. wait until no more operation/commands are running on the device.
-    constexpr VkBool32 boolToVkBool32(const bool b) // TODO create a custom type converter to use static_cast<>. 
+    constexpr VkBool32 boolToVkBool32(const bool b) // TODO create a custom type cast to use static_cast<>. 
     { return (b) ? VK_TRUE : VK_FALSE;}
+  /*constexpr*/ bool operator==(const QueueInfo&,const QueueInfo&);
 
     /*@brief Fill a PhysicalDeviceMinimalRequirement struct with 0 and VK_FALSE so you don't have to.*/
     /*constexpr*/ void getNullPhysicalDeviceMinimalRequirement(PhysicalDeviceMinimalRequirement&);

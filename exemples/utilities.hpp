@@ -34,9 +34,8 @@ namespace GU
 //} //extern C
 //#endif//LIBS_GAMEUTILS_UTILITIES_HEADER
 
-// Cpp file :
+//#include "utilities.hpp"
 
-//extern "C" {
 namespace GU
 {
 
@@ -89,6 +88,5 @@ namespace GU
 
 
 }//namespace GU
-//}/*extern "C"*/
 
-#endif
+#endif//LIBS_GAMEUTILS_UTILITIES_HEADER

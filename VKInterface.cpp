@@ -7,6 +7,7 @@
 #include <map>       // See pickBestPhysicalDevice(...)
 #include <limits>    // See updateSwapchainExtent;
 #include <algorithm> // std::clamp/std::min/std::max
+#include <list>
 
 // Quick note : if you see rqd* it mean ReQuireD*
 
@@ -271,8 +272,6 @@ namespace VKI
     {
         WindowContext wc{};
         wc.window              = glfwCreateWindow(width, height, title.c_str(), nullptr, nullptr);
-        wc.manualShouldClose   = false;
-        wc.forceWindowNotClose = true; 
 
         logInfoCB("A new Window has been created.");
 
@@ -337,9 +336,9 @@ namespace VKI
     /**@brief Return true if the window should be close.*/
     bool windowShouldClose(const WindowContext& context)
     {
-        bool glfwClose = glfwWindowShouldClose(context.window);
+        const bool glfwClose = glfwWindowShouldClose(context.window);
 
-        return (glfwClose || context.manualShouldClose) && context.forceWindowNotClose;
+        return (glfwClose || context.manualShouldClose) && context.forceWindowOpen;
     }
 
     VkInstance createInstance()
@@ -512,13 +511,13 @@ namespace VKI
         return debugMessenger;
     }
 
-    VulkanContext createVulkanContext(
-        const VkInstance        instance, 
-        const WindowContext     windowContext,
-        const uint32_t          semaphoreCount,
-        const uint32_t          fenceCount,
-        const VkPhysicalDevice  physicalDevice
-        )
+    VulkanContext createVulkanContext(const VkInstance        instance, 
+                                      const WindowContext     windowContext,
+                                      const uint32_t          semaphoreCount,
+                                      const uint32_t          fenceCount,
+                                      const bool              fenceSignaled,
+                                      const VkPhysicalDevice  physicalDevice
+                                     )
     {
         logVerboseCB("Creating a new VulkanContex.");
         VulkanContext context;
@@ -548,11 +547,15 @@ namespace VKI
         else
             context.physicalDevice = physicalDevice;
 
+        // TOIMPROVE -> create a logMemoryInfo function that log the memory specs.
+        logInfoCB("createVulkanContext fetch physicalDeviceMemoryProperties."); 
+        vkGetPhysicalDeviceMemoryProperties(context.physicalDevice, &context.physicalDeviceMemoryProperties);
+
         logInfoCB("createVulkanContext fetch queue families.");
         std::vector<QueueInfo> queueInfos(physicalDeviceMinimalRequirement.queueInfos.size());
         queueInfos = findQueueFamilyIndices(context.physicalDevice,
-                                            context.surface,
-                                            physicalDeviceMinimalRequirement.queueInfos
+                                            physicalDeviceMinimalRequirement.queueInfos,
+                                            context.surface
                                            );
 
         logInfoCB("createVulkanContext creating logical device.");
@@ -621,11 +624,8 @@ namespace VKI
             logInfoCB("createVulkanContext creating fences.");
             context.fences.resize(fenceCount);
             for (VkFence &fence : context.fences)
-                fence = createFence(context.device);
+                fence = createFence(context.device, fenceSignaled);
         }
-
-        //context.swapchainFramebuffers can't be initialized since it require graphicsContext.
-        // TODO : if !context.graphicsContext.empty() then call createGraphicsContext(...);
 
         return context;
     }
@@ -660,6 +660,9 @@ namespace VKI
        #endif//VKI_ENABLE_VULKAN_VALIDATION_LAYERS
 
         // Any ressources that have been bind with the device must be destroyed here.
+
+        for (Buffer& buffer : context.buffers)
+            destroyBuffer(context.device, buffer);
 
         for (VkSemaphore &semaphore : context.semaphores)
             destroySemaphore(context.device, semaphore);
@@ -713,51 +716,8 @@ namespace VKI
             vkGetDeviceQueue(device, info.familyIndex, queueIndex, &queues[queueIndex]);
         }
 
-        //TODO logs ?
-
         return queues;
     }
-
-    /**@brief Retrieve the VkQueue from a logical device and store them in the VulkanContext.
-     * @warning Deprecated !
-     */
-    /*
-    void setupVkQueues(VulkanContext &context)
-    {
-        for (Queue& queueBundle : context.queues)
-        {
-            queueBundle.queues.resize(queueBundle.info.count);
-            //for (context
-        }
-        return;
-
-        uint32_t totalQueueCount(0);
-        for (QueueInfo info : context.queueInfos)
-            totalQueueCount += info.count;
-        context.queues = std::vector<VkQueue>(totalQueueCount);
-
-        //VkQueue myQueue;
-        //vkGetDeviceQueue(context.device, context.queueInfos[0].familyIndex, 0, &myQueue);
-
-        uint32_t interFamilyOffset=0;
-        for (QueueInfo queueInfo : context.queueInfos)
-        {
-            for (uint32_t queueCount(0) ; queueCount < queueInfo.count ; queueCount++)
-            {
-                VkQueue fetchedQueue;
-                vkGetDeviceQueue(
-                                 context.device, 
-                                 queueInfo.familyIndex, 
-                                 queueCount, 
-                                 &fetchedQueue
-                                );
-                context.queues.at(interFamilyOffset+queueCount) = fetchedQueue;
-            }
-
-            interFamilyOffset += queueInfo.count;
-        }
-    }
-    */
 
     /**@brief Return the version of the api of the vulkan instance.
      * @return -1 if failed, otherwise the version of the api.
@@ -2565,7 +2525,7 @@ namespace VKI
                 ss<<"\n\t";
                 ss<<"Queue family index="<<index<<" have the properties :\n\t\t";
                 ss<<"max queue instancible = "<<property.queueCount<<".\n\t\t";
-                ss<<"supported operations  = "<<VkQueueFlagBitsToString(property.queueFlags);
+                ss<<"supported operations  = "<<queueFlagBitsToString(property.queueFlags);
 
                 index++;
             }
@@ -2576,114 +2536,415 @@ namespace VKI
         return properties;
     }
 
-    /**@brief compare two flags, return true if the lf is less than rf.
-     */
-    bool cmpVkQueueFlags(const VkQueueFlags lf, const VkQueueFlags rf)
+    std::vector<QueueInfo> getPhysicalQueueInfos(const VkPhysicalDevice physicalDevice, 
+                                                 const VkSurfaceKHR     surface, 
+                                                 bool logInfo
+                                                )
     {
-        /* simple View :
-         * for each bit value:
-         *  if ((lf not require operation) || (rf support operation))
-         */
+        std::vector<VkQueueFamilyProperties> properties = listPhysicalDeviceQueueFamilyProperties(physicalDevice, logInfo);
 
-        bool isLF_lessThan_RF = true;
-        isLF_lessThan_RF &= ( ((lf & VK_QUEUE_GRAPHICS_BIT) == 0) || (rf & VK_QUEUE_GRAPHICS_BIT));
-        isLF_lessThan_RF &= ( ((lf & VK_QUEUE_COMPUTE_BIT ) == 0) || (rf & VK_QUEUE_COMPUTE_BIT ));
-        isLF_lessThan_RF &= ( ((lf & VK_QUEUE_TRANSFER_BIT) == 0) || (rf & VK_QUEUE_TRANSFER_BIT));
-        isLF_lessThan_RF &= ( ((lf & VK_QUEUE_SPARSE_BINDING_BIT) == 0) || (rf & VK_QUEUE_SPARSE_BINDING_BIT));
-
-        return isLF_lessThan_RF;
-    }
-
-    std::vector<QueueInfo> findQueueFamilyIndices(const VkPhysicalDevice device, const VkSurfaceKHR surface, const std::vector<QueueInfo> requiredQueues)
-    {
-        // TODO : It work -> delete this comment.
-        /* // To be honest i've lost my mind on this function (cause i've 
-         * // totaly redesigned the queue logic) so here is a quick view of 
-         * // what i will try to implement.
-         * Algo :
-         * list available queue family
-         * std::vector<std::pair<family, usedCount>>
-         * for each required:
-         *    bool isRequiedFound = false;
-         *    for each family:
-         *         if required.flag<=family.flags & 
-         *            family.usedCount+required.count <= family.maxCount:
-         *         {
-         *             family.usedCount += required.count;
-         *             required.index = family.index;
-         *             isRequiredFound = true;
-         *             break;
-         *         }
-         *    if (not isRequiredFound)
-         *      crash();
-         *
-         */
-        std::vector<QueueInfo> queueInfos(requiredQueues);
-
-        std::vector<VkQueueFamilyProperties> properties = listPhysicalDeviceQueueFamilyProperties(device);
-
-        std::vector<std::pair<VkQueueFamilyProperties, uint32_t>> properties_countUsed;
+        std::vector<QueueInfo> infos;
+        infos.reserve(properties.size());
+        uint32_t indexCounter=0;
         for (VkQueueFamilyProperties property : properties)
         {
-            properties_countUsed.emplace_back(
-                    property, 
-                    0
-                    );
-        }
+            QueueInfo info;
+            info.familyIndex = indexCounter;
+            info.count       = property.queueCount;
+            info.operations  = property.queueFlags;
+            info.isPresentable = false;
 
-        //uint32_t queueInfoCount = 0;
-        //for (QueueInfo queueInfo : queueInfos)
-        for (uint32_t i(0) ; i < queueInfos.size() ; i++)
-        {
-            bool isQueueInfoFilled = false;
-            uint32_t index=0;
-
-            for (std::pair<VkQueueFamilyProperties,uint32_t> property_countUsed : properties_countUsed)
+            if (surface != VK_NULL_HANDLE)
             {
-                VkBool32 presentSupport = VK_FALSE;
-                if (vkGetPhysicalDeviceSurfaceSupportKHR(device, index, surface, &presentSupport) != VkResult::VK_SUCCESS)
-                    presentSupport = VK_FALSE;
-
-                if (
-                    ( cmpVkQueueFlags(queueInfos[i].operations, property_countUsed.first.queueFlags) ) && 
-                    ( (queueInfos[i].count + property_countUsed.second) <= property_countUsed.first.queueCount) &&
-                    ( (not queueInfos[0].isPresentable) || (presentSupport == VK_TRUE) )
-                   )
+                VkBool32 isPresentable = VK_FALSE;
+                VkResult error = vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, 
+                                                                      info.familyIndex, 
+                                                                      surface, 
+                                                                      &isPresentable
+                                                                     );
+                switch(error)
                 {
-                    property_countUsed.second += queueInfos[i].count;
-                    queueInfos[i].familyIndex  = index;
-                    isQueueInfoFilled = true;
-                    break;
+                    case (VkResult::VK_SUCCESS):
+                    {
+                        info.isPresentable = true;
+                        break;//
+                    }
+    #ifdef VK_KHR_surface
+                    case (VkResult::VK_ERROR_SURFACE_LOST_KHR):
+                    {
+                        logErrorCB("getPhysicalQueueInfos lost surface access ?! No queue will be presentable.");
+                        [[fallthrough]];
+                    }
+    #endif
+                    default:
+                    {
+                        info.isPresentable = false;
+                    }
                 }
-                index++;
             }
-            if (not isQueueInfoFilled)
-            {
-                std::stringstream ss;
-                ss<<"findQueueFamilyIndices failed to fill the queueInfo["<<i<<"]";
-                logFatalErrorCB(ss.str().c_str());
 
-                throw std::runtime_error("VKI::findQueueFamiliesIndices a required queueInfo can be assigned to any family.");
-            }
+            infos.push_back(info);
+            indexCounter++;
         }
 
-        return queueInfos;
-        
+        return infos;
     }
 
-    bool areRequiredFamilyQueueAvailable(const VkPhysicalDevice device, const VkSurfaceKHR surface) noexcept
+    // TODO : this function is now useless ...
+    VkQueueFlagBits getQueueMainOperation(const VkQueueFlags flags) noexcept
     {
-        logWarningCB("areRequiredFamilyQueueAvailable called : "
-                     "this log might be filled with a false fatal_error "
-                     "from findQueueFamilyIndices.");
+        VkQueueFlagBits mainOperation;
+        if      (flags & VK_QUEUE_GRAPHICS_BIT)
+            mainOperation = VK_QUEUE_GRAPHICS_BIT;
+        else if (flags & VK_QUEUE_COMPUTE_BIT)
+            mainOperation = VK_QUEUE_COMPUTE_BIT;
+    #ifdef VK_KHR_video_decode_queue
+        else if (flags & VK_QUEUE_VIDEO_DECODE_BIT_KHR)
+            mainOperation = VK_QUEUE_VIDEO_DECODE_BIT_KHR;
+    #endif
+    #ifdef VK_KHR_video_encode_queue
+        else if (flags & VK_QUEUE_VIDEO_ENCODE_BIT_KHR)
+            mainOperation = VK_QUEUE_VIDEO_ENCODE_BIT_KHR;
+    #endif
+    #ifdef VK_NV_optical_flow
+        else if (flags & VK_QUEUE_OPTICAL_FLOW_BIT_NV)
+            mainOperation = VK_QUEUE_OPTICAL_FLOW_BIT_NV;
+    #endif
+        else if (flags & VK_QUEUE_TRANSFER_BIT) // last since most other type imply transfer.
+            mainOperation = VK_QUEUE_TRANSFER_BIT;
+        else
+            mainOperation = static_cast<VkQueueFlagBits>(0);
 
+        return mainOperation;
+    }
+
+    constexpr bool isQueueFamilySuitable(const QueueInfo& physicalQueueFamily, const QueueInfo& requiredQueue)
+    {
+        return ((0 == (requiredQueue.operations ^ (physicalQueueFamily.operations & requiredQueue.operations)))
+                && (physicalQueueFamily.isPresentable || !requiredQueue.isPresentable)
+                && (physicalQueueFamily.count >= requiredQueue.count)
+               );
+    }
+
+  /*constexpr*/ unsigned getDistanceBetweenQueueOperations(const VkQueueFlags opA, const VkQueueFlags opB)
+    {
+        // replace bitset by popcount if migrate to c++20.
+        const std::bitset<64> opMaskA(opA), // 32 bits count sould be enough.
+                              opMaskB(opB);
+        const std::bitset<64> distanceMask = opMaskA ^ opMaskB;
+        return distanceMask.count();
+    }
+
+#ifdef VKI_ENABLE_DEBUG_LOGS 
+    // TODO give this function a better name.
+    void deleteMeImADebuggingFunction(const std::map<QueueInfo,
+                                                     std::list<std::pair<QueueInfo, uint32_t>>,
+                                                     std::function<bool(const QueueInfo &a, const QueueInfo &b)>
+                                                    > data)
+    {
+        std::stringstream ss;
+
+        ss<<"ULTRA DEBUG :\n";
+        ss<<"\t\t\tThere is "<<std::dec<<data.size()<<" required queue families\n";
+
+        for (const std::pair<QueueInfo, std::list<std::pair<QueueInfo, uint32_t>>>& rqd_available : data)
+        {
+            ss<<"\t\t\tA required family, with "<<static_cast<uint32_t>(rqd_available.first.count)<<" instancible queues, "
+                "and supporting operations :"<<queueFlagBitsToString(rqd_available.first.operations)<<"\n"
+                "\t\t\tHave "<<rqd_available.second.size()<<" suitable families :\n";
+
+            for (const std::pair<QueueInfo, uint32_t>& phyQueue_cost : rqd_available.second)
+            {
+                ss<<"\t\t\t\t|-> Family index="<<static_cast<uint32_t>(phyQueue_cost.first.familyIndex)
+                  <<" with operations : "<<queueFlagBitsToString(phyQueue_cost.first.operations)
+                  <<"and would cost "<<std::dec<<phyQueue_cost.second<<"\n";
+            }
+            ss<<"\n";
+        }
+
+        logInfoCB(ss.str().c_str());
+
+    }
+#endif//VKI_ENABLE_DEBUG_LOGS 
+
+    // TODO : this function is more complex than excpected : write some tests !
+    std::vector<QueueInfo> findQueueFamilyIndices(const VkPhysicalDevice        device, 
+                                                  const std::vector<QueueInfo>& queueTemplate,
+                                                  const VkSurfaceKHR            surface,
+                                                  const bool                    logInfo
+                                                 )
+    {
+        std::vector<QueueInfo> requiredQueues(queueTemplate);
+        std::vector<QueueInfo> physicalQueues = getPhysicalQueueInfos(device, surface);
+
+        std::function<bool(const QueueInfo &a, const QueueInfo &b)> predicat = [](const QueueInfo &a, const QueueInfo &b)
+        {
+            return a.operations < b.operations;
+        };
+
+        std::map<QueueInfo,                                 // required queue.
+                 std::list<std::pair<QueueInfo, uint32_t>>, // a list of suitable families and the distance to it.
+                 decltype(predicat)                         // (with 'distance' I meaning measure 'wasted potential').
+                > suitableFamilies(predicat);
+
+        // Initialize suitableFamilies.
+        {
+        uint32_t requiredQueueIndex=0;
+        for (QueueInfo rqdQueue : requiredQueues)
+        {
+            // note : In suitableFamilies, the familyIndex of required queues (which have no meaning in this context)
+            // represent their index in requiredQueues vector.
+            rqdQueue.familyIndex=requiredQueueIndex;
+            suitableFamilies.emplace(rqdQueue, std::list<std::pair<QueueInfo, uint32_t>>{});
+
+            requiredQueueIndex++;
+        }}
+
+        // Fill suitableFamilies.
+        for (const QueueInfo& rqdQueue: requiredQueues)
+        {
+            bool atLeastOneFound = false;
+            for (const QueueInfo& phyQueue : physicalQueues)
+            {
+                if (isQueueFamilySuitable(phyQueue, rqdQueue))
+                {
+                    atLeastOneFound=true;
+                    suitableFamilies.at(rqdQueue).push_back({
+                            phyQueue, 
+                            getDistanceBetweenQueueOperations(phyQueue.operations, rqdQueue.operations)
+                            });
+                }
+            }
+
+            if (not atLeastOneFound)
+            {
+                logErrorCB("findQueueFamilyIndices failed to find a suitable family for a queue.");
+                throw std::runtime_error("findQueueFamilyIndices failed to find a suitable family for a queue.");
+            }
+        }
+
+        // Assign rqdQueues to their best fitting family.
+    
+        std::vector<uint32_t> familyInstanceCount(physicalQueues.size(), 0); // How many instance have already be allocate to this family.
+        while (!suitableFamilies.empty())
+        {
+            std::optional<QueueInfo> familyToDelete, requiredQueueToDelete;
+
+    #ifdef VKI_ENABLE_DEBUG_LOGS 
+            if (logInfo)
+                deleteMeImADebuggingFunction(suitableFamilies);
+    #endif//VKI_ENABLE_DEBUG_LOGS 
+
+            // First let's assign requiredQueues that have only one family available.
+            for (const std::pair<QueueInfo, std::list<std::pair<QueueInfo, uint32_t>>> rqd_suitable : suitableFamilies)
+            {
+                const QueueInfo& requiredQueue    = rqd_suitable.first;
+                const auto&      suitableFamilies = rqd_suitable.second;
+
+                if (suitableFamilies.size() == 1)// can't be null.
+                {
+                    const uint32_t   queueIndex = requiredQueue.familyIndex; // aka the index in requiredQueues (see at suitableFamilies initialisation).
+                    const QueueInfo& familyInfo = suitableFamilies.front().first;
+
+                    // Test if there is enough instances left.
+                    if (requiredQueue.count+familyInstanceCount[familyInfo.familyIndex] <= familyInfo.count)
+                    {
+                        // Save the family info.
+                        requiredQueues[queueIndex].familyIndex = familyInfo.familyIndex;
+                        familyInstanceCount[familyInfo.familyIndex] += requiredQueue.count;
+
+                        if (familyInstanceCount[familyInfo.familyIndex] == familyInfo.count)// hit max family capacity.
+                            familyToDelete = familyInfo;
+                        requiredQueueToDelete = requiredQueue;
+
+                        break; // exit this for loop to fall below, update the suitableFamilies map and restart.
+                    }
+                    else
+                    {
+                        logErrorCB("findQueueFamilyIndices : A family has too few instancible queues -> lower the requirements.");
+                        throw std::logic_error("VKI->Queues requirements can't be met by the physical device.");
+                    }
+                }
+            }
+
+            // Either all queue have been assigned or all remaining queues have at least two possible families.
+            if (!suitableFamilies.empty()
+                && !(familyToDelete || requiredQueueToDelete)
+               )
+            {
+                // Removing the worst assignment. 
+                std::tuple<QueueInfo, // required.
+                           QueueInfo, // physical.
+                           uint32_t   // cost|distance.
+                          >worstLink = std::tie(suitableFamilies.begin()->first,
+                                                suitableFamilies.begin()->second.front().first,
+                                                suitableFamilies.begin()->second.front().second
+                                               );
+                for (const std::pair<QueueInfo, std::list<std::pair<QueueInfo, uint32_t>>> rqd_suitable : suitableFamilies)
+                {
+                    for (const std::pair<QueueInfo, uint32_t>& family_cost : rqd_suitable.second)
+                    {
+                        if (family_cost.second < std::get<2>(worstLink))
+                            worstLink = std::tie(rqd_suitable.first, family_cost.first, family_cost.second);
+                    }
+                }
+
+                // delete worst assignment possible to unstuck the loop.
+                suitableFamilies.at(std::get<0>(worstLink)).remove({std::get<1>(worstLink), std::get<2>(worstLink)});
+            }
+
+            if (familyToDelete)
+            {
+                std::function<bool(const std::pair<VKI::QueueInfo, unsigned int>&)> removePredicat = 
+                    [&,familyToDelete](const std::pair<VKI::QueueInfo, unsigned int>& family)
+                    {
+                        return family.first == familyToDelete.value();
+                    };
+                for (auto i(suitableFamilies.begin()) ; i!=suitableFamilies.end() ; i++)
+                {
+                    i->second.remove_if(removePredicat);
+                }
+            }
+            if (requiredQueueToDelete)
+            {
+                suitableFamilies.erase(requiredQueueToDelete.value());
+            }
+        }
+
+
+    #ifdef VKI_ENABLE_DEBUG_LOGS 
+        if (logInfo)
+            deleteMeImADebuggingFunction(suitableFamilies);
+    #endif//VKI_ENABLE_DEBUG_LOGS 
+
+        if (logInfo) // Log extra info about the final layout.
+        {
+            std::stringstream ss;
+            ss<<"findQueueFamilyIndices final queue family layout :\n"
+                "\t\t\t|-> "<<requiredQueues.size()<<" queues families are used.\n";
+            size_t queueIndex=0;
+            for (const QueueInfo& info : requiredQueues)
+            {
+                ss<<"\t\t\t|-> Queue index="<<queueIndex<<" is assigned to family index="<<info.familyIndex<<"\n";
+                queueIndex++;
+            }
+
+            logInfoCB(ss.str().c_str());
+        }
+
+        return requiredQueues;
+
+        /*
+        // Main usage of this family (Graphics xor Compute xor transfer) + QueueInfo.
+        typedef std::vector<std::pair<VkQueueFlagBits, QueueInfo>> SortedQueue;
+        SortedQueue rqdSrtQueues, 
+                    phySrtQueues;
+
+        std::vector<QueueInfo> physicalQueues = getPhysicalQueueInfos(device, surface);
+        rqdSrtQueues.reserve(requiredQueues.size());
+        phySrtQueues.reserve(physicalQueues.size());
+
+        // Sorting physical queue families and user requested queue into phySrtQueues and rqdSrtQueues;
+        for (const QueueInfo info : requiredQueues) // Fill rqdSrtQueue.
+        {
+            VkQueueFlagBits mainOperation = getQueueMainOperation(info.operations);
+            if (mainOperation == 0)
+                logErrorCB("findQueueFamilyIndices a REQUIRED queue have no supported operation ??? this queue will be ignored.");
+            else
+                rqdSrtQueues.push_back({mainOperation, info});
+        }
+
+        for (const QueueInfo info : physicalQueues) // Fill phySrtQueue.
+        {
+            VkQueueFlagBits mainOperation = getQueueMainOperation(info.operations);
+            if (mainOperation == 0)
+                logErrorCB("findQueueFamilyIndices a PHYSICAL queue have no supported operation ??? this queue will be ignored.");
+            phySrtQueues.push_back({mainOperation, info});
+        }
+
+        if (logInfo)
+        {
+            std::stringstream ss;
+            ss<<"findQueueFamilyIndices extra logs : \n";
+            bool isPhysical = true;
+            for (auto srtQueues : {phySrtQueues, rqdSrtQueues})
+            {
+                if (isPhysical)
+                    ss<<"Physical queues :\n";
+                else
+                    ss<<"Required queues :\n";
+
+                for (std::pair<VkQueueFlagBits, QueueInfo> srtQueue : srtQueues)
+                {
+                    ss<<"Queue in family ";
+                    if (isPhysical)
+                        ss<<std::dec<<srtQueue.second.familyIndex;
+                    else
+                        ss<<"UNKOWN";
+                    ss<<" have the main usage set to : "
+                      <<queueFlagBitsToString(static_cast<VkQueueFlags>(srtQueue.first))<<"\n";
+                }
+                ss<<"\n";
+                isPhysical=false;
+            }
+
+            logInfoCB(ss.str().c_str());
+        }
+
+        std::vector<uint32_t> phyQueueInstanceCount(phySrtQueues.size(), 0);
+        std::stack<std::pair<VkQueueFlagBits, QueueInfo>> todoStack, todoLaterStack;
+        const std::vector<VkQueueFlagBits> operationPriorities = { 
+#ifdef VK_KHR_video_decode_queue
+            VK_QUEUE_VIDEO_DECODE_BIT_KHR,
+#endif
+#ifdef VK_KHR_video_encode_queue
+            VK_QUEUE_VIDEO_ENCODE_BIT_KHR,
+#endif
+            VK_QUEUE_GRAPHICS_BIT,
+            VK_QUEUE_COMPUTE_BIT,
+            VK_QUEUE_TRANSFER_BIT
+        };
+
+        // fill todoStack
+        for (auto i : rqdSrtQueues)
+            todoStack.push(i);
+
+        for (const VkQueueFlagBits priorityFlag : operationPriorities)
+        {
+            while (!todoStack.empty())
+            {
+                std::pair<VkQueueFlagBits, QueueInfo> item = todoStack.top();
+                todoStack.pop();
+
+                if (item.first != priorityFlag)
+                {
+                    todoLaterStack.push(item);
+                    continue;
+                }
+
+
+
+            }
+
+            std::swap(todoStack, todoLaterStack);
+        }
+
+        std::exit(-1);
+
+        */
+
+    }
+
+    bool areRequiredFamilyQueueAvailable(const VkPhysicalDevice device, const VkSurfaceKHR surface)
+    {
         bool success = true;
         try
         {
             std::vector<QueueInfo> queueInfos = findQueueFamilyIndices(
                                                     device,
+                                                    physicalDeviceMinimalRequirement.queueInfos,
                                                     surface,
-                                                    physicalDeviceMinimalRequirement.queueInfos
+                                                    false
                                                 );
         }
         catch(std::runtime_error &err)
@@ -2720,32 +2981,41 @@ namespace VKI
         return queueCreateInfo;
     }
 
-    std::string VkQueueFlagBitsToString(VkQueueFlags flags)
+    std::string queueFlagBitsToString(VkQueueFlags flags) noexcept
     {
-        std::string string;
-
-        if (flags & VK_QUEUE_GRAPHICS_BIT)
-            string += "graphics, ";
-        if (flags & VK_QUEUE_TRANSFER_BIT)
-            string += "transfer, ";
-        if (flags & VK_QUEUE_COMPUTE_BIT)
-            string += "compute, ";
-        if (flags & VK_QUEUE_SPARSE_BINDING_BIT)
-            string += "sparse binding, ";
-        if (flags & VK_QUEUE_PROTECTED_BIT)
-            string += "protected bit";
-
-        /*
-        // queue video (de|en)code isn't defined ...
-        if (flags & VK_QUEUE_VIDEO_DECODE_BIT_KHR)
-            string += "protected bit, ";
-        if (flags & VK_QUEUE_PROTECTED_BIT)
-            string += "protected bit, ";
-        */
+        std::stringstream ss;
 
         if (flags == 0)
-            string += "No flags set";
+            ss << "Null flag, ";
 
+        if (flags & VK_QUEUE_GRAPHICS_BIT)
+            ss << "graphics, ";
+        if (flags & VK_QUEUE_TRANSFER_BIT)
+            ss << "transfer, ";
+        if (flags & VK_QUEUE_COMPUTE_BIT)
+            ss << "compute, ";
+        if (flags & VK_QUEUE_SPARSE_BINDING_BIT)
+            ss << "sparse binding, ";
+    #ifdef VK_VERSION_1_1
+        if (flags & VK_QUEUE_PROTECTED_BIT)
+            ss << "protected bit";
+    #endif
+    #ifdef VK_KHR_video_decode_queue
+        if (flags & VK_QUEUE_VIDEO_DECODE_BIT_KHR)
+            ss << "decode video, ";
+    #endif
+    #ifdef VK_KHR_video_encode_queue
+        if (flags & VK_QUEUE_VIDEO_ENCODE_BIT_KHR)
+            ss << "encode video, ";
+    #endif
+    #ifdef VK_NV_optical_flow
+        if (flags & VK_QUEUE_OPTICAL_FLOW_BIT_NV)
+            ss << "nvidia optical flow,";
+    #endif
+
+        ss<<"("<<std::hex<<static_cast<uint32_t>(flags)<<").";
+
+        std::string string = ss.str();
         return string;
     }
 
@@ -2905,7 +3175,7 @@ namespace VKI
 
     /* Support EOL.
     void queuePresent(const VkQueue queue, 
-                      const std::vector<std::pair<VkSwapchainKHR, uint32_t>> &swapchainImagesIndicies, 
+                      const std::vector<std::pair<VkSwapchainKHR, uint32_t>> &swapchainImagesIndices, 
                       const std::vector<VkSemaphore> &semaphores,
                       bool *pSuboptimal,
                       bool *pSurfaceLost,
@@ -2914,13 +3184,13 @@ namespace VKI
                       bool *pFullScreenExclusiveModeLost
                      )
     {
-        std::vector<uint32_t>       imgIndicies(swapchainImagesIndicies.size());
-        std::vector<VkSwapchainKHR> swapchains (swapchainImagesIndicies.size());
+        std::vector<uint32_t>       imgIndices(swapchainImagesIndices.size());
+        std::vector<VkSwapchainKHR> swapchains (swapchainImagesIndices.size());
 
-        for (size_t i(0) ; i<imgIndicies.size() ; i++)
+        for (size_t i(0) ; i<imgIndices.size() ; i++)
         {
-            swapchains [i] = swapchainImagesIndicies[i].first;
-            imgIndicies[i] = swapchainImagesIndicies[i].second;
+            swapchains [i] = swapchainImagesIndices[i].first;
+            imgIndices[i] = swapchainImagesIndices[i].second;
         }
 
         std::vector<VkResult> swapchainResults(swapchains.size());
@@ -2932,7 +3202,7 @@ namespace VKI
         presentInfo.pWaitSemaphores     = semaphores.data();
         presentInfo.swapchainCount      = swapchains.size();
         presentInfo.pSwapchains         = swapchains.data();
-        presentInfo.pImageIndices       = imgIndicies.data();
+        presentInfo.pImageIndices       = imgIndices.data();
         presentInfo.pResults            = swapchainResults.data();
 
         VkResult error = vkQueuePresentKHR(queue, &presentInfo);
@@ -3026,7 +3296,8 @@ namespace VKI
         for (QueueInfo queueInfo : queueInfos)
         {
             std::stringstream ss;
-            ss<<"createLogicalDevice add a queue family with those capabilities : "<<VkQueueFlagBitsToString(queueInfo.operations);
+            ss<<"createLogicalDevice add a queue family with those capabilities : "<<queueFlagBitsToString(queueInfo.operations);
+            ss<<" at index="<<queueInfo.familyIndex<<".";
             logInfoCB(ss.str().c_str());
 
             VkDeviceQueueCreateInfo queueCreateInfo = populateDeviceQueueCreateInfo(queueInfo);
@@ -3379,7 +3650,6 @@ namespace VKI
     bool isSwapChainInfoMatchMinimalRequirement(const SwapChainInfo& sci)
     {
         const SwapChainInfo& rqdSci = VKI::physicalDeviceMinimalRequirement.swapChainInfo;
-
         
         // capabilities :
         if (not intersectMinMaxImageCount(sci, rqdSci, nullptr))
@@ -3597,15 +3867,69 @@ namespace VKI
                                     swapchainInfo.queueFamilyIndicesSharingTheSwapChain.end()
                                     );
                               
-        std::stringstream ss, sss;
         { // log shared queue families:
+            std::stringstream ss;
             ss<<queueFamilyIndicesSharingTheSwapChain.size()<<" Queue families are sharing the swapchain.";
             logInfoCB(ss.str().c_str());
 
-            sss<<"Queue family indicies that share the swapchain : ";
+            ss.str(std::string());
+            ss<<"Queue family indices that share the swapchain : ";
             for (uint32_t i : queueFamilyIndicesSharingTheSwapChain)
-                sss<<i<<", ";
-            logInfoCB(sss.str().c_str());
+                ss<<i<<", ";
+            logInfoCB(ss.str().c_str());
+        
+        // log present mode:
+            ss.str(std::string());
+
+            ss<<"swapchain will use the present mode : ";
+            switch(swapchainInfo.presentModes.front())
+            {
+                case (VkPresentModeKHR::VK_PRESENT_MODE_IMMEDIATE_KHR):
+                {
+                    ss<<"IMMEDIATE.";
+                    break;
+                }
+                case (VkPresentModeKHR::VK_PRESENT_MODE_MAILBOX_KHR):
+                {
+                    ss<<"MAILBOX.";
+                    break;
+                }
+                case (VkPresentModeKHR::VK_PRESENT_MODE_FIFO_KHR):
+                {
+                    ss<<"FIFO.";
+                    break;
+                }
+                case (VkPresentModeKHR::VK_PRESENT_MODE_FIFO_RELAXED_KHR):
+                {
+                    ss<<"FIFO_RELAXED.";
+                    break;
+                }
+    #ifdef VK_KHR_shared_presentable_image
+                case (VkPresentModeKHR::VK_PRESENT_MODE_SHARED_DEMAND_REFRESH_KHR):
+                {
+                    ss<<"SHARED_DEMAND_REFRESH.";
+                    break;
+                }
+                case (VkPresentModeKHR::VK_PRESENT_MODE_SHARED_CONTINUOUS_REFRESH_KHR):
+                {
+                    ss<<"SHARED_CONTINUOUS_REFRESH.";
+                    break;
+                }
+    #endif
+    #ifdef VK_EXT_present_mode_fifo_latest_ready
+                case (VkPresentModeKHR::VK_PRESENT_MODE_FIFO_LATEST_READY_EXT):
+                {
+                    ss<<"FIFO_LATEST_READY.";
+                    break;
+                }
+    #endif
+                default:
+                {
+                    ss<<"UNKOWN !";
+                    break;
+                }
+            }
+            logInfoCB(ss.str().c_str());
         }
 
         clearNullMaxImageCount(physicalDeviceMinimalRequirement.swapChainInfo);
@@ -4500,6 +4824,532 @@ namespace VKI
             logWarningCB("destroyFrameBuffer called on a VK_NULL_HANDLE.");
     }
 
+    std::vector<Buffer> createBuffers(const VkDevice device, std::vector<BufferInfo>& bufferInfos)
+    {
+        std::vector<Buffer> buffers;
+        buffers.reserve(bufferInfos.size());
+
+        for (size_t i(0) ; i<bufferInfos.size() ; i++)
+       {
+            Buffer buffer{VK_NULL_HANDLE, VK_NULL_HANDLE, nullptr, bufferInfos[i]};
+
+            VkBufferCreateInfo bufferCI;
+            bufferCI.sType      = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    #ifndef VK_VERSION_1_4
+            bufferCI.pNext      = (buffer.info.useUsage2) ? buffer.info.usage2 : nullptr;
+    #else
+            bufferCI.pNext      = nullptr;
+    #endif
+            bufferCI.flags      = buffer.info.flags;
+            bufferCI.size       = buffer.info.size;
+            bufferCI.usage      = buffer.info.usage;
+            bufferCI.sharingMode= (buffer.info.exclusiveMode) ? VK_SHARING_MODE_EXCLUSIVE : VK_SHARING_MODE_CONCURRENT;
+            bufferCI.queueFamilyIndexCount = buffer.info.queueFamilyIndicesSharingTheBuffer.size();
+            bufferCI.pQueueFamilyIndices   = buffer.info.queueFamilyIndicesSharingTheBuffer.data();
+
+            VkResult error = vkCreateBuffer(device, &bufferCI, nullptr, &buffer.buffer);
+            switch(error)
+            {
+                case (VkResult::VK_SUCCESS):
+                    break;
+                case (VkResult::VK_ERROR_OUT_OF_HOST_MEMORY):
+                case (VkResult::VK_ERROR_OUT_OF_DEVICE_MEMORY):
+                {
+                    std::stringstream ss;
+                    ss<<"createBuffer failed to create buffer "<<std::dec<<i<<" : out of memory.";
+                    logErrorCB(ss.str().c_str());
+                    throw std::runtime_error("Program out of memory.");
+                }
+                default:
+                {
+                    std::stringstream ss;
+                    ss<<"createBuffer failed to create buffer "<<std::dec<<i<<" : unkown error happended.";
+                    logFatalErrorCB(ss.str().c_str());
+                    throw std::runtime_error("Program outdated.");
+                }
+            }
+            buffers.push_back(buffer);
+        }
+
+        std::stringstream ss;
+        ss<<"createBuffers successfully created "<<std::dec<<buffers.size()<<" buffers";
+        logInfoCB(ss.str().c_str());
+
+        return buffers;
+    }
+
+    /* // TODELETE delete this old version of createBuffers.
+    VkBuffer createBuffer(const VkDevice              device,
+                          const uint64_t              size,
+                          const VkBufferUsageFlags    usages,
+                          const std::vector<uint32_t> accessingQueues,
+                          const bool                  exclusiveAccessMode,
+                          const VkBufferCreateFlags   flags
+                         )
+    {
+        VkBufferCreateInfo bufferCI{};
+        bufferCI.sType  = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferCI.pNext  = nullptr;
+        bufferCI.flags  = flags;
+        bufferCI.size   = size;
+        bufferCI.usage  = usages;
+        bufferCI.sharingMode = (exclusiveAccessMode) ? VK_SHARING_MODE_EXCLUSIVE : VK_SHARING_MODE_CONCURRENT ;
+        bufferCI.queueFamilyIndexCount = accessingQueues.size();
+        bufferCI.pQueueFamilyIndices   = accessingQueues.data();
+
+        VkBuffer buffer = VK_NULL_HANDLE;
+        VkResult error = vkCreateBuffer(device, &bufferCI, nullptr, &buffer);
+
+        switch(error)
+        {
+            case (VkResult::VK_SUCCESS):
+            {
+                logInfoCB("createBuffer successfully created a new buffer.");
+                break;
+            }
+            case (VkResult::VK_ERROR_OUT_OF_HOST_MEMORY):
+            case (VkResult::VK_ERROR_OUT_OF_DEVICE_MEMORY):
+            {
+                logFatalErrorCB("createBuffer failed to create a new buffer : out of memory.");
+                throw std::runtime_error("Program out of memory.");
+            }
+            default:
+            {
+                logFatalErrorCB("createBuffer encountered an unkown error while creating a new buffer.");
+                throw std::runtime_error("Program outdated.");
+            }
+        }
+
+        return buffer;
+    }
+    */
+
+    void destroyBuffer(const VkDevice device, Buffer &buffer) noexcept
+    {
+        destroyBuffer(device, buffer.buffer);
+        freeMemory   (device, buffer.memory);
+        buffer.buffer=VK_NULL_HANDLE;
+        buffer.memory=VK_NULL_HANDLE;
+        logInfoCB("destroyBuffer (Buffer) successfully destroyed a Buffer struct.");
+    }
+
+    void destroyBuffer(const VkDevice device, VkBuffer& buffer) noexcept
+    {
+        if (buffer==VK_NULL_HANDLE) 
+            logWarningCB("destroyBuffer (VkBuffer) called onto a VK_NULL_HANDLE.");
+        else
+        {
+            vkDestroyBuffer(device, buffer, nullptr);
+            buffer=VK_NULL_HANDLE;
+            logInfoCB("destroyBuffer (VkBuffer) successfully destroyed a buffer.");
+        }
+    }
+
+    bool allocateBuffer(const VkDevice                          device, 
+                              Buffer&                           buffer, 
+                        const VkPhysicalDeviceMemoryProperties& phyMemoriesProperties, 
+                        const bool                              bindMemoryToBuffer,
+                        const bool                              logInfo
+                       )
+    {
+        VkMemoryRequirements bufferRequirements{};
+        vkGetBufferMemoryRequirements(device, buffer.buffer, &bufferRequirements);
+
+        if (logInfo)
+        {
+            std::stringstream ss;
+            ss<<"allocateBuffer called on buffer at ";
+            ss<<std::hex<<reinterpret_cast<uint64_t>(&buffer);
+            ss<<"\n\t\t with a size       (Bytes) : "<<std::dec<<static_cast<uint64_t>(bufferRequirements.size);
+            ss<<"\n\t\t with an alignment (Bytes) : "<<std::dec<<static_cast<uint64_t>(bufferRequirements.alignment);
+            ss<<"\n\t\t and memory type bits      : "<<std::hex<<static_cast<uint64_t>(bufferRequirements.memoryTypeBits);
+
+            ss<<"\n\t\t\t |-> ";
+            if (bufferRequirements.memoryTypeBits == 0)
+                ss<<"None the property is null";
+            if (bufferRequirements.memoryTypeBits & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
+                ss<<"DEVICE_LOCAL, ";
+            if (bufferRequirements.memoryTypeBits & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
+                ss<<"HOST_VISIBLE, ";
+            if (bufferRequirements.memoryTypeBits & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
+                ss<<"HOST_COHERENT, ";
+            if (bufferRequirements.memoryTypeBits & VK_MEMORY_PROPERTY_HOST_CACHED_BIT)
+                ss<<"HOST_CACHED, ";
+            if (bufferRequirements.memoryTypeBits & VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT)
+                ss<<"LAZILY_ALLOCATED, ";
+            if (bufferRequirements.memoryTypeBits & VK_MEMORY_PROPERTY_PROTECTED_BIT)
+                ss<<"PROTECTED, ";
+        #ifdef VK_AMD_device_coherent_memory
+            if (bufferRequirements.memoryTypeBits & VK_MEMORY_PROPERTY_DEVICE_COHERENT_BIT_AMD)
+                ss<<"AMD_DEVICE_COHERENT, ";
+            if (bufferRequirements.memoryTypeBits & VK_MEMORY_PROPERTY_DEVICE_UNCACHED_BIT_AMD)
+                ss<<"AMD_DEVICE_UNCACHED, ";
+        #endif
+        #ifdef VK_NV_external_memory_rdma
+            if (bufferRequirements.memoryTypeBits & VK_MEMORY_PROPERTY_RDMA_CAPABLE_BIT_NV)
+                ss<<"NVIDIA_RDMA_CAPABLE, ";
+        #endif
+            
+            logInfoCB(ss.str().c_str());
+        }
+
+        // Select the right heap to assign the buffer to.
+
+        const uint32_t bufferTypesFilter = bufferRequirements.memoryTypeBits;
+        uint32_t memoryTypeIndex = -1;
+        for (uint32_t i(0) ; i<phyMemoriesProperties.memoryTypeCount ; i++)
+        {
+            if ((bufferTypesFilter & (1<<i)) &&
+                (phyMemoriesProperties.memoryTypes[i].propertyFlags & buffer.info.memoryProperties)
+               )
+            {
+                memoryTypeIndex=i;
+                break;
+            }
+        }
+        if (memoryTypeIndex == -1)
+        {
+            logErrorCB("allocateBuffer failed to find a suitable memory to allocate from.");
+            //throw std::runtime_error("VKI::allocateBuffer failed to find a suitable memory to allocate from.");
+            return false;
+        }
+
+        if (logInfo)
+        {
+            const uint32_t heapIndex = phyMemoriesProperties.memoryTypes[memoryTypeIndex].heapIndex;
+            std::stringstream ss;
+            ss<<"allocateBuffer will allocate memory from heap id=";
+            ss<<std::dec<<heapIndex;
+            logInfoCB(ss.str().c_str());
+            
+            logMemoryHeapInfo(phyMemoriesProperties, heapIndex);
+        }
+
+        buffer.memory = allocateMemory(device, bufferRequirements.size, memoryTypeIndex);
+
+        if (bindMemoryToBuffer)
+        {
+            logVerboseCB("allocateBuffer directly call bindBufferMemory");
+            bindBufferMemory(device, buffer.buffer, buffer.memory, buffer.info.offset);
+        }
+
+        return true;
+    }
+
+    VkDeviceMemory allocateMemory(const VkDevice      device,
+                                  const VkDeviceSize  size,
+                                  const uint32_t      memoryTypeIndex
+                                 )
+    {
+        VkDeviceMemory deviceMemory;
+        VkMemoryAllocateInfo memoryAllocateCI{};
+        memoryAllocateCI.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        memoryAllocateCI.pNext           = nullptr;
+        memoryAllocateCI.allocationSize  = size;
+        memoryAllocateCI.memoryTypeIndex = memoryTypeIndex;
+
+        VkResult error = vkAllocateMemory(device, &memoryAllocateCI, nullptr, &deviceMemory);
+        switch (error)
+        {
+            case (VkResult::VK_SUCCESS):
+            {
+                logInfoCB("allocateBuffer successfully allocated memory.");
+                break;
+            }
+            case (VkResult::VK_ERROR_OUT_OF_HOST_MEMORY):
+            case (VkResult::VK_ERROR_OUT_OF_DEVICE_MEMORY):
+            {
+                logFatalErrorCB("allocateBuffer failed to allocate memory : out of memory.");
+                throw std::runtime_error("Program out of memory.");
+            }
+            default:
+            {
+                logFatalErrorCB("allocateBuffer encountered an unkown error while allocating some memory.");
+                throw std::runtime_error("Program outdated.");
+            }
+        }
+
+        return deviceMemory;
+    }
+
+    void freeMemory(const VkDevice device, VkDeviceMemory &memory) noexcept
+    {
+        if (memory == VK_NULL_HANDLE)
+            logWarningCB("freeMemory called on a VK_NULL_HANDLE.");
+        else
+        {
+            vkFreeMemory(device, memory, nullptr);
+            memory=VK_NULL_HANDLE;
+            logInfoCB("freeMemory successfully freed memory.");
+        }
+    }
+
+    void bindBufferMemory(const VkDevice       device, 
+                                VkBuffer       buffer, 
+                                VkDeviceMemory memory,
+                          const VkDeviceSize   memoryOffset
+                         )
+    {
+        if ((buffer==VK_NULL_HANDLE) || (memory==VK_NULL_HANDLE))
+            logWarningCB("bindBufferMemory called onto VK_NULL_HANDLE.");
+        else
+        {
+            VkResult error = vkBindBufferMemory(device, buffer, memory, memoryOffset);
+            switch(error)
+            {
+                case (VkResult::VK_SUCCESS):
+                {
+                    logInfoCB("bindBufferMemory successfully binded a device memory to a buffer.");
+                    break;
+                }
+                case (VkResult::VK_ERROR_OUT_OF_HOST_MEMORY):
+                case (VkResult::VK_ERROR_OUT_OF_DEVICE_MEMORY):
+                {
+                    logFatalErrorCB("bindBufferMemory failed to bind a device memory to a buffer : out of memory.");
+                    throw std::runtime_error("Program out of memory.");
+                }
+                case (VkResult::VK_ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS_KHR):
+                {
+                    logFatalErrorCB("bindBufferMemory failed to bind a device memory to a buffer : VK_ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS_KHR.");
+                    throw std::runtime_error("Program can't access memory.");
+                }
+                default:
+                {
+                    logFatalErrorCB("bindBufferMemory encountered an unkown error while binding the memory to the buffer.");
+                    throw std::runtime_error("Program outdated.");
+                }
+            }
+        }
+    }
+
+    void logMemoryInfo(const VkPhysicalDeviceMemoryProperties& deviceMemProperties)
+    {
+        std::stringstream ss;
+        ss<<"----- logMemoryInfo called, logging info about all "<<deviceMemProperties.memoryHeapCount<<" available heaps -----";
+        logInfoCB(ss.str().c_str());
+
+        for (uint32_t heapIndex=0 ; heapIndex < deviceMemProperties.memoryHeapCount ; heapIndex++)
+            logMemoryHeapInfo(deviceMemProperties, heapIndex);
+
+        ss.str(std::string());
+        ss<<"----- logMemoryInfo successfully logged info about all available heap on the system";
+        logInfoCB(ss.str().c_str());
+    }
+
+    void logMemoryHeapInfo(const VkPhysicalDeviceMemoryProperties& deviceMemProperties, const uint32_t heapIndex)
+    {
+        std::vector<VkMemoryPropertyFlags> heapProperties;
+
+        for (uint32_t i=0 ; i<deviceMemProperties.memoryTypeCount ; i++)
+        {
+            if (deviceMemProperties.memoryTypes[i].heapIndex == heapIndex)
+            {
+                heapProperties.push_back(deviceMemProperties.memoryTypes[i].propertyFlags);
+            }
+        }
+
+        std::stringstream ss;
+        ss<<"logging info about heap at index="<<std::dec<<heapIndex;
+        ss<<"\n\t\tThis heap support "<<heapProperties.size()<<" properties :";
+        uint32_t index=0;
+        for (VkMemoryPropertyFlags flags : heapProperties)
+        {
+            ss<<"\n\t\t|---> property "<<index<<" : (value=0x"<<std::hex<<flags<<')';
+            if (flags == 0)
+                ss<<"\n\t\t|\t|-> No property ??";
+            else if (flags & (  ~  (VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | 
+                                    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                    VK_MEMORY_PROPERTY_HOST_COHERENT_BIT|
+                                    VK_MEMORY_PROPERTY_HOST_CACHED_BIT  |
+                                    VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT |
+                                    #ifdef VK_VERSION_1_1
+                                    VK_MEMORY_PROPERTY_PROTECTED_BIT |
+                                    #endif
+                                    #ifdef VK_AMD_device_coherent_memory
+                                    VK_MEMORY_PROPERTY_DEVICE_COHERENT_BIT_AMD |
+                                    VK_MEMORY_PROPERTY_DEVICE_UNCACHED_BIT_AMD |
+                                    #endif
+                                    #ifdef VK_NV_external_memory_rdma
+                                    VK_MEMORY_PROPERTY_RDMA_CAPABLE_BIT_NV
+                                    #endif
+                                    )
+                            )
+                    ) // aka a property exist but isn't registered in the spec at the time.
+                ss<<"\n\t\t|\t|-> unkown properties (VKI might be outdated) ???";
+            if (flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
+                ss<<"\n\t\t|\t|-> DEVICE_LOCAL";
+            if (flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
+                ss<<"\n\t\t|\t|-> HOST_COHERENT";
+            if (flags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT)
+                ss<<"\n\t\t|\t|-> HOST_CACHED";
+            if (flags & VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT)
+                ss<<"\n\t\t|\t|-> LAZILY_ALLOCATED";
+    #ifdef VK_VERSION_1_1
+            if (flags & VK_MEMORY_PROPERTY_PROTECTED_BIT)
+                ss<<"\n\t\t|\t|-> PROTECTED_MEMORY";
+    #endif
+    #ifdef VK_AMD_device_coherent_memory
+            if (flags & VK_MEMORY_PROPERTY_DEVICE_COHERENT_BIT_AMD)
+                ss<<"\n\t\t|\t|-> AMD_DEVICE_COHERENT";
+            if (flags & VK_MEMORY_PROPERTY_DEVICE_UNCACHED_BIT_AMD)
+                ss<<"\n\t\t|\t|-> AMD_DEVICE_UNCACHED";
+    #endif
+    #ifdef VK_NV_external_memory_rdma
+            if (flags & VK_MEMORY_PROPERTY_RDMA_CAPABLE_BIT_NV)
+                ss<<"\n\t\t|\t|-> NVIDIA_RDMA_CAPABLE";
+    #endif
+
+            index++;
+        }
+        logInfoCB(ss.str().c_str());
+    }
+
+    void* mapMemory(const VkDevice           device,
+                    const VkDeviceMemory     memory,
+                    const VkDeviceSize       offset,
+                    const VkDeviceSize       size
+                   )
+    {
+        void* hostMemory = nullptr;
+
+        VkResult error = vkMapMemory(device, memory, offset, size, 0, &hostMemory);
+        bool logged=false;
+        switch(error)
+        {
+            case (VkResult::VK_SUCCESS):
+            {
+                logInfoCB("mapMemory successfully mapped the device memory to the host.");
+                break;
+            }
+            case (VkResult::VK_ERROR_MEMORY_MAP_FAILED):
+            {
+                logErrorCB("mapMemory failed to allocate memory on the host to map the device memory to.");
+                logged=true;
+                [[fallthrough]];
+            }   
+            case (VkResult::VK_ERROR_OUT_OF_HOST_MEMORY):
+            {
+                if (!logged) logErrorCB("mapMemory failed to map device memory to host : out of host memory.");
+                logged=true;
+                [[fallthrough]];
+            }  
+            case (VkResult::VK_ERROR_OUT_OF_DEVICE_MEMORY):
+            {
+                if(!logged) logFatalErrorCB("mapMemory failed to map device memory to host : out of device memory.");
+                throw std::runtime_error("Program out of memory.");
+            }
+            default:
+            {
+                logFatalErrorCB("mapMemory encountered an unkown error while mapping device memory to the host.");
+                throw std::runtime_error("Program outdated.");
+            }
+        }
+
+        return hostMemory;
+    }
+    void mapBuffer(const VkDevice device, Buffer& buffer)
+    {
+        if (buffer.mappedAddr!=nullptr)
+            logErrorCB("mapBuffer called on what appear to be a already mapped buffer since buffer.mappedAddr!=nullptr !");
+        else
+        {
+            buffer.mappedAddr = mapMemory(device, buffer.memory, buffer.info.offset, buffer.info.size);
+            logInfoCB("mapBuffer successfully mapped a buffer.");
+        }
+    }
+
+    void unmapBuffer(const VkDevice device, Buffer& buffer)
+    {
+        if (buffer.mappedAddr == nullptr)
+            logWarningCB("unmappedBuffer called on buffer.mappedAddr=nullptr.");
+        else
+        {
+            vkUnmapMemory(device, buffer.memory);
+            buffer.mappedAddr = nullptr;
+            logInfoCB("unmapBuffer successfully unmapped a buffer");
+        }
+    }
+
+    void writeBuffer(const VkDevice device,
+                           Buffer&  buffer,
+                     const void*    data,
+                     const size_t   maxSize
+                    )
+    {
+        if (buffer.mappedAddr==nullptr)
+            mapBuffer(device, buffer);
+
+        const size_t size = (maxSize==VK_WHOLE_SIZE) ? buffer.info.size : std::min(buffer.info.size, maxSize);
+        std::memcpy(buffer.mappedAddr, data, size);
+    }
+
+    void flushBuffers(const VkDevice device,
+                      const std::vector<Buffer>& buffers,
+                      const bool flushRead,
+                      const bool flushWrite
+                     )
+    {
+        std::vector<VkMappedMemoryRange> ranges;
+        ranges.reserve(buffers.size());
+        for (size_t i=0 ; i<buffers.size() ; i++)
+        {
+            VkMappedMemoryRange range{};
+            ranges[i].sType  = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
+            ranges[i].pNext  = nullptr;
+            ranges[i].memory = buffers[i].memory;
+            ranges[i].offset = buffers[i].info.offset;
+            ranges[i].size   = buffers[i].info.size;
+            ranges.push_back(range);
+        }
+
+        if (flushRead)
+        {
+            VkResult error = vkInvalidateMappedMemoryRanges(device, ranges.size(), ranges.data());
+            switch(error)
+            {
+                case (VkResult::VK_SUCCESS):
+                {
+                    logInfoCB("flushBuffers successfully flushed all buffers.");
+                    break;
+                }
+                case (VkResult::VK_ERROR_OUT_OF_HOST_MEMORY):
+                case (VkResult::VK_ERROR_OUT_OF_DEVICE_MEMORY):
+                {
+                    logFatalErrorCB("flushBuffers failed to invalidate (flush to read) memory ranges : out of memory.");
+                    throw std::runtime_error("Program out of memory.");
+                }
+                default:
+                {
+                    logFatalErrorCB("flushBuffers encountered an unkown error while invalidating (flush to read) memory ranges.");
+                    throw std::runtime_error("Program outdated.");
+                }
+            }
+        }
+        if (flushWrite)
+        {
+            VkResult error = vkFlushMappedMemoryRanges(device, ranges.size(), ranges.data());
+            switch(error)
+            {
+                case (VkResult::VK_SUCCESS):
+                {
+                    logInfoCB("flushBuffers successfully flushed all buffers.");
+                    break;
+                }
+                case (VkResult::VK_ERROR_OUT_OF_HOST_MEMORY):
+                case (VkResult::VK_ERROR_OUT_OF_DEVICE_MEMORY):
+                {
+                    logFatalErrorCB("flushBuffers failed to flush (to write) memory ranges : out of memory.");
+                    throw std::runtime_error("Program out of memory.");
+                }
+                default:
+                {
+                    logFatalErrorCB("flushBuffers encountered an unkown error while flushing (to write) memory ranges.");
+                    throw std::runtime_error("Program outdated.");
+                }
+            }
+        }
+    }
+
     VkCommandPool createCommandPool(const VkDevice device, VkCommandPoolCreateFlags flags, uint32_t queueFamilyIndex)
     {
         VkCommandPool commandPool;
@@ -4526,7 +5376,7 @@ namespace VKI
             }
             default:
             {
-                logFatalErrorCB("createCommandPool encounter an unkown error while creating a new command pool.");
+                logFatalErrorCB("createCommandPool encountered an unkown error while creating a new command pool.");
                 throw std::runtime_error("Program outdated.");
             }
         }
@@ -4792,6 +5642,17 @@ namespace VKI
         }
     }
 
+    std::vector<VkBuffer> listBuffersHandle(const std::vector<Buffer>& buffers)
+    {
+        std::vector<VkBuffer> bufferHandles;
+        bufferHandles.reserve(buffers.size());
+
+        for (Buffer buffer : buffers)
+            bufferHandles.push_back(buffer.buffer);
+
+        return bufferHandles;
+    }
+
     void cmdDraw(VkCommandBuffer cmdBuffer, uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertexIndex, uint32_t firstInstanceIndex)
     {
         vkCmdDraw(cmdBuffer, vertexCount, instanceCount, firstVertexIndex, firstInstanceIndex);
@@ -5014,6 +5875,44 @@ namespace VKI
     }
 
     /// Others.
+
+  /*constexpr*/ bool operator==(const QueueInfo& A,const QueueInfo& B)
+    {
+        bool same = true;
+        same &= A.familyIndex   == B.familyIndex;
+        same &= A.count         == B.count;
+        for (size_t i=0 ; i<VKI_MAX_QUEUE_COUNT_PER_FAMILY ; i++)
+            same &= A.priorities[i] == B.priorities[i];
+        same &= A.operations    == B.operations;
+        same &= A.isPresentable == B.isPresentable;
+
+        if (A.cmdPoolInfos.size() == B.cmdPoolInfos.size())
+        {
+            for (size_t i=0 ; i<A.cmdPoolInfos.size() ; i++)
+            {
+                same &= A.cmdPoolInfos[i].poolsFlags == B.cmdPoolInfos[i].poolsFlags;
+                same &= A.cmdPoolInfos[i].poolsCount == B.cmdPoolInfos[i].poolsCount;
+                if (A.cmdPoolInfos[i].commandBufferInfos.size() == B.cmdPoolInfos[i].commandBufferInfos.size())
+                {
+                    for (size_t ii=0 ; ii<A.cmdPoolInfos[i].commandBufferInfos.size() ; ii++)
+                    {
+                        same &= A.cmdPoolInfos[i].commandBufferInfos[ii].primaryCount   == B.cmdPoolInfos[i].commandBufferInfos[ii].primaryCount ;
+                        same &= A.cmdPoolInfos[i].commandBufferInfos[ii].secondaryCount == B.cmdPoolInfos[i].commandBufferInfos[ii].secondaryCount ;
+                        same &= A.cmdPoolInfos[i].commandBufferInfos[ii].poolIndex      == B.cmdPoolInfos[i].commandBufferInfos[ii].poolIndex;
+                    }
+                }
+                else
+                {
+                    same = false;
+                    break;
+                }
+            }
+        }
+        else
+            same = false;
+
+        return same;
+    }
 
     /*constexpr*/ void getNullPhysicalDeviceMinimalRequirement(PhysicalDeviceMinimalRequirement& minRqd)
     {

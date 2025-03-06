@@ -1,6 +1,3 @@
-
-/* This file is a copy (hpp+cpp) of a tiny lib merged into one file.*/
-
 #ifndef LIBS_GAMEUTILS_LOGGER_HEADER
 #define LIBS_GAMEUTILS_LOGGER_HEADER
 
@@ -59,7 +56,7 @@ namespace GU
          * Usefull when you seek an segfault, etc ...
          * @warning heavyDebug Make your program run as fast as a Python script.
          */
-        Logger(const std::filesystem::path, bool heavyDebug=false); // heavyDebug flush afert every log (ULTRA SLOW!).
+        Logger(const std::filesystem::path, bool heavyDebug=false); // heavyDebug flush after every log (ULTRA SLOW!).
         ~Logger();
 
         /**@brief As its name suggests, saves a entry into the current file.
@@ -112,8 +109,6 @@ namespace GU
 //} //extern C
 //#endif//LIBS_GAMEUTILS_LOGGER_HEADER
 
-// cpp file :
-
 //#include "logger.hpp"
 #include "utilities.hpp"
 
@@ -122,7 +117,6 @@ namespace GU
 #include <sstream>
 #include <stdexcept>
 
-//extern "C" {
 namespace GU
 {
 
@@ -283,7 +277,7 @@ namespace GU
 	 * @Except std::invalid_argument if logger is nullptr (unless ignoreOnNullptr is true).
 	 */
 	LogInterface::LogInterface(std::shared_ptr<Logger> targetLogger, const char* name, bool ignoreOnNullptr)
-		: logger(targetLogger), myName(name)
+		: logger(targetLogger), myName(GU::duplicateString(name))
 	{
 		if ((targetLogger.get() == nullptr) && (ignoreOnNullptr))
 			throw std::invalid_argument("GU::LogInterface require a valid Logger* but got nullptr");
@@ -292,6 +286,7 @@ namespace GU
     LogInterface::~LogInterface()
     {
         logi("LogInterface deleted.");
+        delete myName;
     }
 
 	void LogInterface::logv(const char* msg, bool isStringVolatile)
@@ -361,7 +356,5 @@ namespace GU
 
 
 }//namespace GU
-//} //extern C
 
-
-#endif
+#endif//LIBS_GAMEUTILS_LOGGER_HEADER

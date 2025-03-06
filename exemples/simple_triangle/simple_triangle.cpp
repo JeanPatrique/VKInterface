@@ -1,17 +1,19 @@
 
-/* This file is a exemple on how to draw a simple triangle with VKI.*/
+/* This file is the most simple exemple on how to draw a simple triangle with VKI.*/
 
 #include <iostream>
 #include <memory>
 #include <utility>
 #include <filesystem>
 #include <chrono>
+#include <thread>
 
 #include "VKInterface.hpp"
-#include "logger.hpp"    // my custom logger for this exemple.
-#include "utilities.hpp" // VKI isn't versatile enough to be stand-alone.
+#include "logger.hpp"    // A custom logger for this exemple.
+#include "utilities.hpp" // VKI isn't meant to be stand-alone.
 
-#define HEAVY_DEBUG true // flush every log entries (python speed but back-trace segfault).
+#define HEAVY_DEBUG false     // flush every log entries (python speed but back-trace segfault).
+#define VKI_ENABLE_DEBUG_LOGS // extrat logs to find some nasty bugs.
 
 //Helper functions.
 void drawCall(VKI::VulkanContext &vContext, VKI::WindowContext &wContext);
@@ -28,11 +30,33 @@ void registerFrameResizeEventCallback(VKI::WindowContext *wContext);
 enum semaphoreNames : uint32_t
 {
     SWAPCHAIN_IMG_AVAILABLE  = 0,
-    RENDER_FINISH            = 2, // Since there is two images in-flight the indicies must be offset by 2.
+    RENDER_FINISH            = 2, // Since there are two images in-flight the indices must be offset by 2.
 };
 enum fenceNames : uint32_t
 {
     SUBMIT_END = 0
+};
+enum my_buffers : uint32_t
+{
+    STAGING_VERTEX_BUFFER = 0,
+    VERTEX_BUFFER         = 1,
+};
+enum my_queues : uint32_t
+{
+    GRAPHICS_QUEUE = 0,
+    TRANSFER_QUEUE = 1,
+    COMPUTE_QUEUE  = 2
+};
+
+struct Vertex
+{
+    glm::vec2 position;
+    glm::vec3 color;
+};
+const std::array<Vertex, 3> simpleTriangle = {
+    Vertex{{ 0.0f, -0.5f}, {1.0f, 0.0f, 1.0f}}, 
+    Vertex{{ 0.5f,  0.5f}, {0.0f, 1.0f, 0.0f}}, 
+    Vertex{{-0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}}
 };
 
 const std::string progName = "VKI demo";
@@ -45,65 +69,96 @@ GU::LogInterface mainScope(globalLogger, "MainScope"),
                 #endif//VKI_ENABLE_VULKAN_VALIDATION_LAYERS
                  ;
 
+
 int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 {
-    // Set vki logging callback.
+    // Set VKI logging callback.
     VKI::registerLogsVerboseCallback    ([](const char* msg){vkiLogger.logv(msg);});
     VKI::registerLogsInfoCallback       ([](const char* msg){vkiLogger.logi(msg);});
     VKI::registerLogsWarningCallback    ([](const char* msg){vkiLogger.logw(msg);});
     VKI::registerLogsErrorCallback      ([](const char* msg){vkiLogger.loge(msg);});
     VKI::registerLogsFatalErrorCallback ([](const char* msg){vkiLogger.logf(msg);});
    #ifdef VKI_ENABLE_VULKAN_VALIDATION_LAYERS
-    // Set vki validation layers logging callback.
+    // Set VKI validation layers logging callback.
     VKI::registerLogsValidationLayerVerboseCallback ([](const char* msg){vkiVLLogger.logv(msg);});
     VKI::registerLogsValidationLayerInfoCallback    ([](const char* msg){vkiVLLogger.logi(msg);});
     VKI::registerLogsValidationLayerWarningCallback ([](const char* msg){vkiVLLogger.logw(msg);});
     VKI::registerLogsValidationLayerErrorCallback   ([](const char* msg){vkiVLLogger.loge(msg);});
    #endif//VKI_ENABLE_VULKAN_VALIDATION_LAYERS
 
-    // Logs Information about the environment.
-    //VKI::logAvailableValidationLayers();
-    //VKI::logAvailableExtension();
-
     // Register minimals requirements.
     VKI::PhysicalDeviceMinimalRequirement minRqd;
     VKI::getNullPhysicalDeviceMinimalRequirement(minRqd); // Set all spec to 0 or VK_FALSE, so we only enable what we need.
 
     minRqd.swapChainInfo.capabilities.minImageCount = 2; // By default VKI create the maximum images available.
-    minRqd.swapChainInfo.capabilities.maxImageCount = 3;
+    minRqd.swapChainInfo.capabilities.maxImageCount = 0; // =inf : If gpu max is also 0 : VKI will create VKI_MAX_IMAGE_COUNT_IF_UNLIMITED (16 imgs).
     minRqd.swapChainInfo.capabilities.supportedTransforms     = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
     minRqd.swapChainInfo.capabilities.currentTransform        = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
     minRqd.swapChainInfo.capabilities.supportedCompositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;// Ignore alpha.
     minRqd.swapChainInfo.currentCompositeAlpha                = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
     minRqd.swapChainInfo.capabilities.supportedUsageFlags     = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT 
                                                               | VK_IMAGE_USAGE_TRANSFER_DST_BIT
-                                                                ;
+                                                              ;
 
     // Note on format nomenclature : https://stackoverflow.com/questions/59628956/what-is-the-difference-between-normalized-scaled-and-integer-vkformats#answer-59630187
     minRqd.swapChainInfo.formats.resize(1);
     minRqd.swapChainInfo.formats[0] = {VK_FORMAT_B8G8R8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR };
     minRqd.swapChainInfo.presentModes.resize(3);
-    minRqd.swapChainInfo.presentModes[0] = VK_PRESENT_MODE_MAILBOX_KHR;   // aka immediate mode without tearing.
-    minRqd.swapChainInfo.presentModes[1] = VK_PRESENT_MODE_FIFO_KHR;      // v-sync.
+    minRqd.swapChainInfo.presentModes[1] = VK_PRESENT_MODE_MAILBOX_KHR;   // aka immediate mode without tearing.
+    minRqd.swapChainInfo.presentModes[0] = VK_PRESENT_MODE_FIFO_KHR;      // v-sync.
     minRqd.swapChainInfo.presentModes[2] = VK_PRESENT_MODE_IMMEDIATE_KHR; // unlimited frame rate : may cause tearing.
 
     // Queues.
-    minRqd.queueInfos.resize(1);
-    minRqd.queueInfos[0].count = 1;
-    minRqd.queueInfos[0].priorities[0] = 1.0f;
-    minRqd.queueInfos[0].operations = VK_QUEUE_GRAPHICS_BIT |
-                                      VK_QUEUE_COMPUTE_BIT  |
-                                      VK_QUEUE_TRANSFER_BIT ;
-    minRqd.queueInfos[0].isPresentable = true;
-    minRqd.swapChainInfo.queueFamilyIndicesSharingTheSwapChain = {0};
+    // note : You should query the physical device's queue families (with getPhysicalQueueInfos) before 
+    //        populating theses structures. For exemple nvidia (seems to) have a GRAPHICS + COMPUTE 
+    //        queue family whereas AMD (seems to) have two separate families for these two operations.
+    minRqd.queueInfos.resize(3);
 
-    minRqd.queueInfos[0].cmdPoolInfos.resize(1);
-    minRqd.queueInfos[0].cmdPoolInfos[0].poolsCount = 1;
-    minRqd.queueInfos[0].cmdPoolInfos[0].poolsFlags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    minRqd.queueInfos[0].cmdPoolInfos[0].commandBufferInfos.resize(1);
-    minRqd.queueInfos[0].cmdPoolInfos[0].commandBufferInfos[0].primaryCount = 2; // Two primary command buffer are required.
-    minRqd.queueInfos[0].cmdPoolInfos[0].commandBufferInfos[0].secondaryCount = 0;
-    minRqd.queueInfos[0].cmdPoolInfos[0].commandBufferInfos[0].poolIndex = 0;
+    // GRAPHICS_QUEUE
+    minRqd.queueInfos[GRAPHICS_QUEUE].count = 1;
+    minRqd.queueInfos[GRAPHICS_QUEUE].priorities[0] = 1.0f;
+    minRqd.queueInfos[GRAPHICS_QUEUE].operations = VK_QUEUE_GRAPHICS_BIT;
+    minRqd.queueInfos[GRAPHICS_QUEUE].isPresentable = true;
+    minRqd.swapChainInfo.queueFamilyIndicesSharingTheSwapChain = {0}; // TODO ENORME ERREUR ICI !!
+
+    minRqd.queueInfos[GRAPHICS_QUEUE].cmdPoolInfos.resize(1);
+    minRqd.queueInfos[GRAPHICS_QUEUE].cmdPoolInfos[0].poolsCount = 1;
+    minRqd.queueInfos[GRAPHICS_QUEUE].cmdPoolInfos[0].poolsFlags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    minRqd.queueInfos[GRAPHICS_QUEUE].cmdPoolInfos[0].commandBufferInfos.resize(1);
+    minRqd.queueInfos[GRAPHICS_QUEUE].cmdPoolInfos[0].commandBufferInfos[0].primaryCount = 2; // Two primary command buffer are required
+                                                                                              // since there are two in flight frame.
+    minRqd.queueInfos[GRAPHICS_QUEUE].cmdPoolInfos[0].commandBufferInfos[0].secondaryCount = 0;
+    minRqd.queueInfos[GRAPHICS_QUEUE].cmdPoolInfos[0].commandBufferInfos[0].poolIndex = 0;
+
+    // TRANSFER_QUEUE (which is probably going to be a compute queue (just to show what vki is capable of)).
+    minRqd.queueInfos[TRANSFER_QUEUE].count = 1;
+    minRqd.queueInfos[TRANSFER_QUEUE].priorities[0] = 1.0f;
+    minRqd.queueInfos[TRANSFER_QUEUE].operations = VK_QUEUE_TRANSFER_BIT ;
+    minRqd.queueInfos[TRANSFER_QUEUE].isPresentable = false;
+
+    minRqd.queueInfos[TRANSFER_QUEUE].cmdPoolInfos.resize(1);
+    minRqd.queueInfos[TRANSFER_QUEUE].cmdPoolInfos[0].poolsCount = 1;
+    minRqd.queueInfos[TRANSFER_QUEUE].cmdPoolInfos[0].poolsFlags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    minRqd.queueInfos[TRANSFER_QUEUE].cmdPoolInfos[0].commandBufferInfos.resize(1);
+    minRqd.queueInfos[TRANSFER_QUEUE].cmdPoolInfos[0].commandBufferInfos[0].primaryCount = 1;
+    minRqd.queueInfos[TRANSFER_QUEUE].cmdPoolInfos[0].commandBufferInfos[0].secondaryCount = 0;
+    minRqd.queueInfos[TRANSFER_QUEUE].cmdPoolInfos[0].commandBufferInfos[0].poolIndex = 0;
+
+    // COMPUTE_QUEUE
+    minRqd.queueInfos[COMPUTE_QUEUE].count = 1;
+    minRqd.queueInfos[COMPUTE_QUEUE].priorities[0] = 1.0f;
+    minRqd.queueInfos[COMPUTE_QUEUE].operations = VK_QUEUE_COMPUTE_BIT;
+    minRqd.queueInfos[COMPUTE_QUEUE].isPresentable = false;
+
+    minRqd.queueInfos[COMPUTE_QUEUE].cmdPoolInfos.resize(1);
+    minRqd.queueInfos[COMPUTE_QUEUE].cmdPoolInfos[0].poolsCount = 1;
+    minRqd.queueInfos[COMPUTE_QUEUE].cmdPoolInfos[0].poolsFlags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    minRqd.queueInfos[COMPUTE_QUEUE].cmdPoolInfos[0].commandBufferInfos.resize(1);
+    minRqd.queueInfos[COMPUTE_QUEUE].cmdPoolInfos[0].commandBufferInfos[0].primaryCount = 1;
+    minRqd.queueInfos[COMPUTE_QUEUE].cmdPoolInfos[0].commandBufferInfos[0].secondaryCount = 0;
+    minRqd.queueInfos[COMPUTE_QUEUE].cmdPoolInfos[0].commandBufferInfos[0].poolIndex = 0;
+
+    // extensions :
 
     minRqd.instanceExtensions = {/*VK_REQUIRED_INSTANCE_EXTENSION_NAME*/};
     minRqd.deviceExtensions   = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
@@ -113,22 +168,78 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
     // Initialise VKI (glfw).
     VKI::init();
 
-    // Simple bootstrap.
-    VKI::WindowContext wContext = VKI::createWindowContext(1960, 1080, progName);
-    VKI::VulkanContext vContext = VKI::createVulkanContext(VKI::createInstance(), wContext, 4); // 2*2 semaphores,
-                                                                                                // no fences.
-    vContext.fences.resize(2); // Here is a great exemple of not using VKI because the default behavior isn't desired.
-    vContext.fences[0] = VKI::createFence(vContext.device, true); // By default, createVulkanContext create fence unsignaled.
-    vContext.fences[1] = VKI::createFence(vContext.device, true); // Which will block execution indefinitly on first
-                                                                  // drawCall() call.
+    /* Logs Information about the environment.
+    mainScope.logv("Listing validation layers + extensions :");
+    VKI::logAvailableValidationLayers();
+    VKI::logAvailableExtension();*/
 
-    registerFrameResizeEventCallback(&wContext);// register a simple callback to save in wContext if the window have been resized.
+    // Bootstrap.
+    VKI::WindowContext wContext = VKI::createWindowContext(1980, 1080, progName);
+    VKI::VulkanContext vContext = VKI::createVulkanContext(VKI::createInstance(), 
+                                                           wContext, 
+                                                           4,   // 2*2 semaphores,
+                                                           2,   // 2 fences, 
+                                                           true // Fences signaled,
+                                                           );   // Auto best device. 
 
-    // Loading resources :
+    // (not part of VKI) Register a simple callback to save in wContext if the window have been resized.
+    registerFrameResizeEventCallback(&wContext);
+
+    // Loading shaders :
     mainScope.logv("Loading quad.vert.spv .");
     std::vector<char> quadVertex    = GU::readFile("./shaders/quad.vert.spv");
     mainScope.logv("Loading quad.frag.spv .");
     std::vector<char> quadFragment  = GU::readFile("./shaders/quad.frag.spv");
+
+    // meshes :
+
+    VkVertexInputBindingDescription  meshVertexBindingDescription;
+    meshVertexBindingDescription.binding   = 0;              // Id of the binding (i.g. vkCmdBindVertexBuffer).
+    meshVertexBindingDescription.stride    = sizeof(Vertex); // How much data per vertex shader.
+    meshVertexBindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;   // Move to the next [Vertex] after each verticies (vertex shader call).
+                                        //!= VK_VERTEX_INPUT_RATE_INSTANCE; // Move to the next [Vertex] after each instances.
+
+    std::array<VkVertexInputAttributeDescription, 2> meshVertexAttributeDescriptions; // 2 attr => 2 layout.
+    meshVertexAttributeDescriptions[0].location = 0 ; // position layout location.
+    meshVertexAttributeDescriptions[0].binding  = 0 ; // From which binding to pull data from.
+    meshVertexAttributeDescriptions[0].format   = VK_FORMAT_R32G32_SFLOAT; // 2x4 bytes signed float.
+    meshVertexAttributeDescriptions[0].offset   = offsetof(Vertex, position); // Offet of the field position in Vertex.
+    meshVertexAttributeDescriptions[1].location = 1 ; // color layout location.
+    meshVertexAttributeDescriptions[1].binding  = 0 ;
+    meshVertexAttributeDescriptions[1].format   = VK_FORMAT_R32G32B32_SFLOAT; // 3x4 bytes signed float RGB.
+    meshVertexAttributeDescriptions[1].offset   = offsetof(Vertex, color);
+
+    // Buffer :
+
+    mainScope.logv("Logging info about the available memory.");
+    VKI::logMemoryInfo(vContext.physicalDeviceMemoryProperties);
+
+    std::vector<VKI::BufferInfo> bufferInfos(1);
+    bufferInfos[STAGING_VERTEX_BUFFER] = VKI::BufferInfo{};
+    bufferInfos[STAGING_VERTEX_BUFFER].size  = sizeof(Vertex) * simpleTriangle.size();
+    bufferInfos[STAGING_VERTEX_BUFFER].usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    bufferInfos[STAGING_VERTEX_BUFFER].memoryProperties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                                  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT ;
+    bufferInfos[STAGING_VERTEX_BUFFER].queueFamilyIndicesSharingTheBuffer = {vContext.queueFamilies[0].info.familyIndex};
+
+    vContext.buffers = VKI::createBuffers(vContext.device, bufferInfos);
+
+    if (!VKI::allocateBuffer(vContext.device, 
+                             vContext.buffers[STAGING_VERTEX_BUFFER],
+                             vContext.physicalDeviceMemoryProperties
+                            ))
+    {
+        mainScope.logf("mainScope unable to find suitable memory for the vertex buffer !");
+        std::cerr<<"Failed to find a suitable heap for the vertex memory, "
+                   "please change the requirement for the vertex buffer\n"
+                   "PS : The available memory properties should have been written to the logg file.";
+        throw std::logic_error("main : unable to find suitable memory for the vertex buffer !");
+    }
+
+    mainScope.logv("loading vertex data to the device.");
+    VKI::writeBuffer(vContext.device, vContext.buffers[STAGING_VERTEX_BUFFER], simpleTriangle.data()); 
+    // since no maxSize have been set : simpleTriangle.size() must be >= buffer.info.size;
+    VKI::unmapBuffer(vContext.device, vContext.buffers[STAGING_VERTEX_BUFFER]);
 
     // Creating the graphics pipeline and render pass.
     VKI::GraphicsContext gContext;
@@ -152,7 +263,11 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
     pipelineInfo.scissors[0].offset = {0, 0};
     pipelineInfo.scissors[0].extent = vContext.swapChainInfo.capabilities.currentExtent;
     pipelineInfo.cullMode           = VK_CULL_MODE_NONE; // Discard no triangle.
-
+    pipelineInfo.vertexInputBindingDescriptions.resize(1);
+    pipelineInfo.vertexInputBindingDescriptions[0] = meshVertexBindingDescription;
+    pipelineInfo.vertexInputAttributeDescriptions.assign(meshVertexAttributeDescriptions.begin(), 
+                                                         meshVertexAttributeDescriptions.end()
+                                                        );
     VKI::RenderPassInfo renderPassInfo = {};
     VKI::RenderSubPassInfo renderSubPassInfo = {};
     renderSubPassInfo.colorAttachmentReferences.resize(1);
@@ -160,14 +275,14 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
     renderSubPassInfo.colorAttachmentReferences[0].layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
     VkAttachmentDescription attDsc = {};
-     attDsc.format          = vContext.swapChainInfo.formats.front().format;
-     attDsc.samples         = VK_SAMPLE_COUNT_1_BIT;
-     attDsc.loadOp          = VK_ATTACHMENT_LOAD_OP_CLEAR;
-     attDsc.storeOp         = VK_ATTACHMENT_STORE_OP_STORE;
-     attDsc.stencilLoadOp   = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-     attDsc.stencilStoreOp  = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-     attDsc.initialLayout   = VK_IMAGE_LAYOUT_UNDEFINED;
-     attDsc.finalLayout     = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    attDsc.format          = vContext.swapChainInfo.formats.front().format;
+    attDsc.samples         = VK_SAMPLE_COUNT_1_BIT;
+    attDsc.loadOp          = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attDsc.storeOp         = VK_ATTACHMENT_STORE_OP_STORE;
+    attDsc.stencilLoadOp   = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attDsc.stencilStoreOp  = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attDsc.initialLayout   = VK_IMAGE_LAYOUT_UNDEFINED;
+    attDsc.finalLayout     = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
     renderPassInfo.attachmentDescs.resize(1);
     renderPassInfo.attachmentDescs[0] = attDsc;
@@ -182,7 +297,6 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
     renderPassInfo.subPassDependencies[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
     renderPassInfo.subPassDependencies[0].dependencyFlags = 0;
 
-    
     gContext.pipelines.resize(1);
     gContext.pipelines[0].info = pipelineInfo;
     gContext.renderPassInfo = renderPassInfo;
@@ -216,7 +330,6 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 
     mainScope.logv("Main loop begin.");
 
-
     uint32_t frameCount = 0;
     while (!VKI::windowShouldClose(wContext))
     {
@@ -224,7 +337,8 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 
         if (wContext.eventWindowResized)
         {
-            reCreateSwapchain(vContext, wContext);
+            reCreateSwapchain(vContext, wContext); // TODO their is a error occuring when forcing full screen where a semaphore is signaled
+                                                   // before passing it to acquireNextImage ... idk check the logs.
             wContext.eventWindowResized = false;
         }
 
@@ -243,6 +357,8 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
             GU::countFrameRate();
             frameCount++;
         }
+
+        //std::this_thread::sleep_for(std::chrono::duration<double, std::milli>{16});
     }
     std::cout<<"\n";
 
@@ -262,13 +378,15 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 void drawCall(VKI::VulkanContext &vContext, VKI::WindowContext &wContext)
 {
     static std::vector<VKI::SubmitInfo> submitInfos(2);
-    const VKI::SwapchainStatusFlags supportedSwapchainErrors = VKI::SWAPCHAIN_STATUS_OUT_OF_DATE_BIT    |
-                                                             //VKI::SWAPCHAIN_STATUS_SURFACE_LOST_BIT   |
-                                                               VKI::SWAPCHAIN_STATUS_SUBOPTIMAL_BIT     ;
-    VKI::SwapchainStatusFlags swapchainErrors;
+    static std::vector<VkBuffer>        vertexBuffers = VKI::listBuffersHandle(vContext.buffers);
+    static std::vector<VkDeviceSize>    vertexBufferOffsets = {0};
+    VKI::SwapchainStatusFlags           swapchainErrors;
+    const VKI::SwapchainStatusFlags     supportedSwapchainErrors = VKI::SWAPCHAIN_STATUS_OUT_OF_DATE_BIT    |
+                                                                 //VKI::SWAPCHAIN_STATUS_SURFACE_LOST_BIT   |
+                                                                   VKI::SWAPCHAIN_STATUS_SUBOPTIMAL_BIT     ;
 
     static uint32_t currentFrame = 1; // Tell which of the two in flight frame buffer are use.
-    currentFrame = (currentFrame+1)%2;
+    currentFrame = (currentFrame+1)%2; // use & 2 ?? TODO
 
     VkQueue         &queue      = vContext.queueFamilies[0].queues[0];                // only one queue is used.
     VkPipeline      &pipeline   = vContext.graphicsContexts[0].pipelines[0].pipeline; // as only one pipeline exist.
@@ -311,7 +429,10 @@ void drawCall(VKI::VulkanContext &vContext, VKI::WindowContext &wContext)
                         );
 
     VKI::cmdBindPipeline(cmdBuffer, pipeline);
-    VKI::cmdDraw(cmdBuffer, 3, 1, 0, 0);
+
+    vkCmdBindVertexBuffers(cmdBuffer, 0, 1, vertexBuffers.data(), vertexBufferOffsets.data());
+
+    VKI::cmdDraw(cmdBuffer, static_cast<uint32_t>(simpleTriangle.size()), 1, 0, 0);
     VKI::cmdEndRenderPass(cmdBuffer);
     VKI::cmdEndRecordCommandBuffer(cmdBuffer);
 

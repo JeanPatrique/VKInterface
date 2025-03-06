@@ -54,9 +54,9 @@ if (${VKI_BUILD_EXEMPLE_EXECUTABLES})
     include_directories("${CMAKE_CURRENT_SOURCE_DIR}/exemples")
 
     add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/exemples/simple_triangle")
-    #add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/exemples/simple_quad")
+    #add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/exemples/tests") # TODO uncomment this !
     
-    #add_executable(${source_name} "${cmake_current_source_dir}/exemples/${exemple_source}.cpp")
+    # 
     #target_link_libraries(${source_name} 
     #    vkinterface 
     #    glfw
