@@ -11,7 +11,7 @@ Meaning that this lib is intended to be use as an optional layer to the API, not
 
 ### Linux (Debian-like):
 #### Dependencies :
-    dl, 
+    glfw, vulkan, dl, pthread, X11, Xxf86vm, Xrandr, Xi.
 
 ### Windows :
 
