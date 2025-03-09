@@ -349,11 +349,11 @@ namespace VKI
         const BufferInfo    info;
     };
 
-    /* TODO
-    struct BufferPair // Simple primitive that ease the data transfer of a host local and a device local buffers.
+    /*
+    struct BufferMirror // Link a Buffer (device_local) and a 'mirror' (host_visible).
     {
-        Buffer hostBuffer,
-               deviceBuffer;
+        Buffer deviceBuffer,
+               hostBuffer; // Both buffer must be identical (except memoryProperties).
     };
     */
 
@@ -526,7 +526,7 @@ namespace VKI
                                                   const bool         logInfo = true
                                                  );
     bool areRequiredFamilyQueueAvailable(const VkPhysicalDevice, const VkSurfaceKHR);
-    VkDeviceQueueCreateInfo populateDeviceQueueCreateInfo(const uint32_t index, const float priorities[VKI_MAX_QUEUE_COUNT_PER_FAMILY], const uint8_t count=1);
+    VkDeviceQueueCreateInfo populateDeviceQueueCreateInfo(const QueueInfo& info);
 
     std::string queueFlagBitsToString(VkQueueFlags flags) noexcept;
 
@@ -690,6 +690,7 @@ namespace VKI
 
     void bindBufferMemory(const VkDevice, VkBuffer, VkDeviceMemory, const VkDeviceSize memoryOffset);
 
+    size_t getGlobalMemoryAllocationCount() noexcept; // Return how many allocations simultaneously exist.
     void logMemoryHeapInfo(const VkPhysicalDeviceMemoryProperties&, const uint32_t heapIndex); // log infos about a heap.
     void logMemoryInfo(const VkPhysicalDeviceMemoryProperties&); // log infos about all heaps.
 

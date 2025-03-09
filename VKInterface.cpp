@@ -20,6 +20,8 @@ namespace VKI
     // This is an artefact for a previous design, and it need to be removed (potential race condition).
     // Any other function running in another thread will override this.
 
+    std::atomic<size_t> vkiGlobalMemoryAllocationCount = 0;
+
     std::function<void(const char*)> logVerboseCB    = []([[maybe_unused]]const char* msg){};
     std::function<void(const char*)> logInfoCB       = logVerboseCB;
     std::function<void(const char*)> logWarningCB    = logVerboseCB;
@@ -2007,6 +2009,7 @@ namespace VKI
     // TODO check this error from the validations layers :
     // Validation : Validation Error: [ VUID-VkDeviceCreateInfo-queueFamilyIndex-02802 ] Object 0: handle = 0x5c869eca7080, type = VK_OBJECT_TYPE_PHYSICAL_DEVICE; | MessageID = 0x29498778 | vkCreateDevice(): pCreateInfo->pQueueCreateInfos[2].queueFamilyIndex (1) is not unique and was also used in pCreateInfo->pQueueCreateInfos[1].
     // The Vulkan spec states: The queueFamilyIndex member of each element of pQueueCreateInfos must be unique within pQueueCreateInfos , except that two members can share the same queueFamilyIndex if one describes protected-capable queues and one describes queues that are not protected-capable (https://docs.vulkan.org/spec/latest/chapters/devsandqueues.html#VUID-VkDeviceCreateInfo-queueFamilyIndex-02802)
+    // |-> TODO remove family from suitableFamilies if already assigned (-> let user deal with queue collision).
     std::vector<QueueInfo> findQueueFamilyIndices(const VkPhysicalDevice        device, 
                                                   const std::vector<QueueInfo>& queueTemplate,
                                                   const VkSurfaceKHR            surface,
@@ -2300,7 +2303,7 @@ namespace VKI
         queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
         queueCreateInfo.pNext = nullptr;
         /*
-    #ifdef VK_VERSION_1_2
+    #ifdef VK_VERSION_1_2 // TODO
         queueCreateInfo.flags = 0;// see : https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-VkDeviceQueueCreateInfo-flags-06449
                                   // tell that protected bit can be used if the familly suport it.
                                   // To set this bit, the device must support the feature
@@ -4244,52 +4247,6 @@ namespace VKI
         return buffers;
     }
 
-    /* // TODELETE delete this old version of createBuffers.
-    VkBuffer createBuffer(const VkDevice              device,
-                          const uint64_t              size,
-                          const VkBufferUsageFlags    usages,
-                          const std::vector<uint32_t> accessingQueues,
-                          const bool                  exclusiveAccessMode,
-                          const VkBufferCreateFlags   flags
-                         )
-    {
-        VkBufferCreateInfo bufferCI{};
-        bufferCI.sType  = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        bufferCI.pNext  = nullptr;
-        bufferCI.flags  = flags;
-        bufferCI.size   = size;
-        bufferCI.usage  = usages;
-        bufferCI.sharingMode = (exclusiveAccessMode) ? VK_SHARING_MODE_EXCLUSIVE : VK_SHARING_MODE_CONCURRENT ;
-        bufferCI.queueFamilyIndexCount = accessingQueues.size();
-        bufferCI.pQueueFamilyIndices   = accessingQueues.data();
-
-        VkBuffer buffer = VK_NULL_HANDLE;
-        VkResult error = vkCreateBuffer(device, &bufferCI, nullptr, &buffer);
-
-        switch(error)
-        {
-            case (VkResult::VK_SUCCESS):
-            {
-                logInfoCB("createBuffer successfully created a new buffer.");
-                break;
-            }
-            case (VkResult::VK_ERROR_OUT_OF_HOST_MEMORY):
-            case (VkResult::VK_ERROR_OUT_OF_DEVICE_MEMORY):
-            {
-                logFatalErrorCB("createBuffer failed to create a new buffer : out of memory.");
-                throw std::runtime_error("Program out of memory.");
-            }
-            default:
-            {
-                logFatalErrorCB("createBuffer encountered an unkown error while creating a new buffer.");
-                throw std::runtime_error("Program outdated.");
-            }
-        }
-
-        return buffer;
-    }
-    */
-
     void destroyBuffer(const VkDevice device, Buffer &buffer) noexcept
     {
         destroyBuffer(device, buffer.buffer);
@@ -4420,6 +4377,7 @@ namespace VKI
             case (VkResult::VK_SUCCESS):
             {
                 logInfoCB("allocateBuffer successfully allocated memory.");
+                vkiGlobalMemoryAllocationCount++;
                 break;
             }
             case (VkResult::VK_ERROR_OUT_OF_HOST_MEMORY):
@@ -4446,6 +4404,7 @@ namespace VKI
         {
             vkFreeMemory(device, memory, nullptr);
             memory=VK_NULL_HANDLE;
+            vkiGlobalMemoryAllocationCount--;
             logInfoCB("freeMemory successfully freed memory.");
         }
     }
@@ -4486,6 +4445,11 @@ namespace VKI
                 }
             }
         }
+    }
+
+    size_t getGlobalMemoryAllocationCount() noexcept // Return how many allocations simultaneously exist.
+    {
+        return vkiGlobalMemoryAllocationCount;
     }
 
     void logMemoryInfo(const VkPhysicalDeviceMemoryProperties& deviceMemProperties)
