@@ -112,7 +112,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
     // note : You should query the physical device's queue families (with getPhysicalQueueInfos) before 
     //        populating theses structures. For exemple nvidia (seems to) have a GRAPHICS + COMPUTE 
     //        queue family whereas AMD (seems to) have two separate families for these two operations.
-    minRqd.queueInfos.resize(3);
+    minRqd.queueInfos.resize(2);
 
     // GRAPHICS_QUEUE
     minRqd.queueInfos[GRAPHICS_QUEUE].count = 1;
@@ -144,7 +144,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
     minRqd.queueInfos[TRANSFER_QUEUE].cmdPoolInfos[0].commandBufferInfos[0].secondaryCount = 0;
     minRqd.queueInfos[TRANSFER_QUEUE].cmdPoolInfos[0].commandBufferInfos[0].poolIndex = 0;
 
-    // COMPUTE_QUEUE
+    /* COMPUTE_QUEUE // fix findQueueFamilyIndicies.
     minRqd.queueInfos[COMPUTE_QUEUE].count = 1;
     minRqd.queueInfos[COMPUTE_QUEUE].priorities[0] = 1.0f;
     minRqd.queueInfos[COMPUTE_QUEUE].operations = VK_QUEUE_COMPUTE_BIT;
@@ -157,6 +157,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
     minRqd.queueInfos[COMPUTE_QUEUE].cmdPoolInfos[0].commandBufferInfos[0].primaryCount = 1;
     minRqd.queueInfos[COMPUTE_QUEUE].cmdPoolInfos[0].commandBufferInfos[0].secondaryCount = 0;
     minRqd.queueInfos[COMPUTE_QUEUE].cmdPoolInfos[0].commandBufferInfos[0].poolIndex = 0;
+    */
 
     // extensions :
 

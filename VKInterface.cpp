@@ -1521,859 +1521,195 @@ namespace VKI
         VkPhysicalDeviceFeatures features;
         vkGetPhysicalDeviceFeatures(device, &features);
 
-        // It lag my nvim just to display this monstrosity.
-        // ~570 line of repetive code ...
+    #ifndef VKI_DISABLE_LOGS_CALL
+        #define VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(opeA, opeB, operator, property) \
+        else if (opeA.property operator opeB.property)\
+            {ss<<#property; goto TESTS_FAILED;}
 
         std::stringstream ss;
         ss<<"isPhysicalDeviceMathMinimalRequirements Device > "<<properties.deviceName<<" < is rejected due to : ";
+    #else
+        #define VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(opeA, opeB, operator, property) \
+        else if (opeA.property operator opeB.property)\
+            {goto TESTS_FAILED;}
+    #endif
 
-    	if (targetLimits.maxImageDimension1D > limits.maxImageDimension1D)
-		{
-            ss<<"maxImageDimension1D";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxImageDimension2D > limits.maxImageDimension2D)
-		{
-			ss<<"maxImageDimension2D.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxImageDimension3D > limits.maxImageDimension3D)
-		{
-			ss<<"maxImageDimension3D.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxImageDimensionCube > limits.maxImageDimensionCube)
-		{
-			ss<<"maxImageDimensionCube.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxImageArrayLayers > limits.maxImageArrayLayers)
-		{
-			ss<<"maxImageArrayLayers.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxTexelBufferElements > limits.maxTexelBufferElements)
-		{
-			ss<<"maxTexelBufferElements.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxUniformBufferRange > limits.maxUniformBufferRange)
-		{
-			ss<<"maxUniformBufferRange.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxStorageBufferRange > limits.maxStorageBufferRange)
-		{
-			ss<<"maxStorageBufferRange.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxPushConstantsSize > limits.maxPushConstantsSize)
-		{
-			ss<<"maxPushConstantsSize.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxMemoryAllocationCount > limits.maxMemoryAllocationCount)
-		{
-			ss<<"maxMemoryAllocationCount.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxSamplerAllocationCount > limits.maxSamplerAllocationCount)
-		{
-			ss<<"maxSamplerAllocationCount.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.bufferImageGranularity > limits.bufferImageGranularity)
-		{
-			ss<<"bufferImageGranularity.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.sparseAddressSpaceSize > limits.sparseAddressSpaceSize)
-		{
-			ss<<"sparseAddressSpaceSize.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxBoundDescriptorSets > limits.maxBoundDescriptorSets)
-		{
-			ss<<"maxBoundDescriptorSets.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxPerStageDescriptorSamplers > limits.maxPerStageDescriptorSamplers)
-		{
-			ss<<"maxPerStageDescriptorSamplers.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxPerStageDescriptorUniformBuffers > limits.maxPerStageDescriptorUniformBuffers)
-		{
-			ss<<"maxPerStageDescriptorUniformBuffers.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxPerStageDescriptorStorageBuffers > limits.maxPerStageDescriptorStorageBuffers)
-		{
-			ss<<"maxPerStageDescriptorStorageBuffers.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxPerStageDescriptorSampledImages > limits.maxPerStageDescriptorSampledImages)
-		{
-			ss<<"maxPerStageDescriptorSampledImages.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxPerStageDescriptorStorageImages > limits.maxPerStageDescriptorStorageImages)
-		{
-			ss<<"maxPerStageDescriptorStorageImages.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxPerStageDescriptorInputAttachments > limits.maxPerStageDescriptorInputAttachments)
-		{
-			ss<<"maxPerStageDescriptorInputAttachments.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxPerStageResources > limits.maxPerStageResources)
-		{
-			ss<<"maxPerStageResources.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxDescriptorSetSamplers > limits.maxDescriptorSetSamplers)
-		{
-			ss<<"maxDescriptorSetSamplers.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxDescriptorSetUniformBuffers > limits.maxDescriptorSetUniformBuffers)
-		{
-			ss<<"maxDescriptorSetUniformBuffers.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxDescriptorSetUniformBuffersDynamic > limits.maxDescriptorSetUniformBuffersDynamic)
-		{
-			ss<<"maxDescriptorSetUniformBuffersDynamic.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxDescriptorSetStorageBuffers > limits.maxDescriptorSetStorageBuffers)
-		{
-			ss<<"maxDescriptorSetStorageBuffers.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxDescriptorSetStorageBuffersDynamic > limits.maxDescriptorSetStorageBuffersDynamic)
-		{
-			ss<<"maxDescriptorSetStorageBuffersDynamic.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxDescriptorSetSampledImages > limits.maxDescriptorSetSampledImages)
-		{
-			ss<<"maxDescriptorSetSampledImages.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxDescriptorSetStorageImages > limits.maxDescriptorSetStorageImages)
-		{
-			ss<<"maxDescriptorSetStorageImages.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxDescriptorSetInputAttachments > limits.maxDescriptorSetInputAttachments)
-		{
-			ss<<"maxDescriptorSetInputAttachments.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxVertexInputAttributes > limits.maxVertexInputAttributes)
-		{
-			ss<<"maxVertexInputAttributes.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxVertexInputBindings > limits.maxVertexInputBindings)
-		{
-			ss<<"maxVertexInputBindings.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxVertexInputAttributeOffset > limits.maxVertexInputAttributeOffset)
-		{
-			ss<<"maxVertexInputAttributeOffset.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxVertexInputBindingStride > limits.maxVertexInputBindingStride)
-		{
-			ss<<"maxVertexInputBindingStride.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxVertexOutputComponents > limits.maxVertexOutputComponents)
-		{
-			ss<<"maxVertexOutputComponents.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxTessellationGenerationLevel > limits.maxTessellationGenerationLevel)
-		{
-			ss<<"maxTessellationGenerationLevel.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxTessellationPatchSize > limits.maxTessellationPatchSize)
-		{
-			ss<<"maxTessellationPatchSize.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxTessellationControlPerVertexInputComponents > limits.maxTessellationControlPerVertexInputComponents)
-		{
-			ss<<"maxTessellationControlPerVertexInputComponents.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxTessellationControlPerVertexOutputComponents > limits.maxTessellationControlPerVertexOutputComponents)
-		{
-			ss<<"maxTessellationControlPerVertexOutputComponents.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxTessellationControlPerPatchOutputComponents > limits.maxTessellationControlPerPatchOutputComponents)
-		{
-			ss<<"maxTessellationControlPerPatchOutputComponents.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxTessellationControlTotalOutputComponents > limits.maxTessellationControlTotalOutputComponents)
-		{
-			ss<<"maxTessellationControlTotalOutputComponents.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxTessellationEvaluationInputComponents > limits.maxTessellationEvaluationInputComponents)
-		{
-			ss<<"maxTessellationEvaluationInputComponents.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxTessellationEvaluationOutputComponents > limits.maxTessellationEvaluationOutputComponents)
-		{
-			ss<<"maxTessellationEvaluationOutputComponents.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxGeometryShaderInvocations > limits.maxGeometryShaderInvocations)
-		{
-			ss<<"maxGeometryShaderInvocations.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxGeometryInputComponents > limits.maxGeometryInputComponents)
-		{
-			ss<<"maxGeometryInputComponents.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxGeometryOutputComponents > limits.maxGeometryOutputComponents)
-		{
-			ss<<"maxGeometryOutputComponents.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxGeometryOutputVertices > limits.maxGeometryOutputVertices)
-		{
-			ss<<"maxGeometryOutputVertices.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxGeometryTotalOutputComponents > limits.maxGeometryTotalOutputComponents)
-		{
-			ss<<"maxGeometryTotalOutputComponents.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxFragmentInputComponents > limits.maxFragmentInputComponents)
-		{
-			ss<<"maxFragmentInputComponents.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxFragmentOutputAttachments > limits.maxFragmentOutputAttachments)
-		{
-			ss<<"maxFragmentOutputAttachments.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxFragmentDualSrcAttachments > limits.maxFragmentDualSrcAttachments)
-		{
-			ss<<"maxFragmentDualSrcAttachments.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxFragmentCombinedOutputResources > limits.maxFragmentCombinedOutputResources)
-		{
-			ss<<"maxFragmentCombinedOutputResources.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxComputeSharedMemorySize > limits.maxComputeSharedMemorySize)
-		{
-			ss<<"maxComputeSharedMemorySize.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxComputeWorkGroupCount[0] > limits.maxComputeWorkGroupCount[0])
-		{
-			ss<<"maxComputeWorkGroupCoun[0].";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxComputeWorkGroupCount[1] > limits.maxComputeWorkGroupCount[1])
-		{
-			ss<<"maxComputeWorkGroupCoun[1].";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxComputeWorkGroupCount[2] > limits.maxComputeWorkGroupCount[2])
-		{
-			ss<<"maxComputeWorkGroupCoun[2].";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxComputeWorkGroupInvocations > limits.maxComputeWorkGroupInvocations)
-		{
-			ss<<"maxComputeWorkGroupInvocations.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxComputeWorkGroupSize[0] > limits.maxComputeWorkGroupSize[0])
-		{
-			ss<<"maxComputeWorkGroupSize[0].";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxComputeWorkGroupSize[1] > limits.maxComputeWorkGroupSize[1])
-		{
-			ss<<"maxComputeWorkGroupSize[1].";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxComputeWorkGroupSize[2] > limits.maxComputeWorkGroupSize[2])
-		{
-			ss<<"maxComputeWorkGroupSize[2].";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.subPixelPrecisionBits > limits.subPixelPrecisionBits)
-		{
-			ss<<"subPixelPrecisionBits.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.subTexelPrecisionBits > limits.subTexelPrecisionBits)
-		{
-			ss<<"subTexelPrecisionBits.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.mipmapPrecisionBits > limits.mipmapPrecisionBits)
-		{
-			ss<<"mipmapPrecisionBits.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxDrawIndexedIndexValue > limits.maxDrawIndexedIndexValue)
-		{
-			ss<<"maxDrawIndexedIndexValue.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxDrawIndirectCount > limits.maxDrawIndirectCount)
-		{
-			ss<<"maxDrawIndirectCount.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxSamplerLodBias > limits.maxSamplerLodBias)
-		{
-			ss<<"maxSamplerLodBias.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxSamplerAnisotropy > limits.maxSamplerAnisotropy)
-		{
-			ss<<"maxSamplerAnisotropy.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxViewports > limits.maxViewports)
-		{
-			ss<<"maxViewports.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxViewportDimensions[0] > limits.maxViewportDimensions[0])
-		{
-			ss<<"maxViewportDimension[0].";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxViewportDimensions[1] > limits.maxViewportDimensions[1])
-		{
-			ss<<"maxViewportDimension[1].";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.viewportBoundsRange[0] < limits.viewportBoundsRange[0]) // yes the bool operator is correct.
-		{
-			ss<<"viewportBoundsRang[0].";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.viewportBoundsRange[1] > limits.viewportBoundsRange[1])
-		{
-			ss<<"viewportBoundsRang[1].";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.viewportSubPixelBits > limits.viewportSubPixelBits)
-		{
-			ss<<"viewportSubPixelBits.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.minMemoryMapAlignment > limits.minMemoryMapAlignment)
-		{
-			ss<<"minMemoryMapAlignment.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.minTexelBufferOffsetAlignment > limits.minTexelBufferOffsetAlignment)
-		{
-			ss<<"minTexelBufferOffsetAlignment.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.minUniformBufferOffsetAlignment > limits.minUniformBufferOffsetAlignment)
-		{
-			ss<<"minUniformBufferOffsetAlignment.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.minStorageBufferOffsetAlignment > limits.minStorageBufferOffsetAlignment)
-		{
-			ss<<"minStorageBufferOffsetAlignment.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.minTexelOffset < limits.minTexelOffset) // Yes the operator is correct.
-		{
-			ss<<"minTexelOffset.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxTexelOffset > limits.maxTexelOffset)
-		{
-			ss<<"maxTexelOffset.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.minTexelGatherOffset < limits.minTexelGatherOffset) // Yes operator is correct.
-		{
-			ss<<"minTexelGatherOffset.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxTexelGatherOffset > limits.maxTexelGatherOffset)
-		{
-			ss<<"maxTexelGatherOffset.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.minInterpolationOffset < limits.minInterpolationOffset)
-		{
-			ss<<"minInterpolationOffset.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxInterpolationOffset > limits.maxInterpolationOffset)
-		{
-			ss<<"maxInterpolationOffset.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.subPixelInterpolationOffsetBits > limits.subPixelInterpolationOffsetBits)
-		{
-			ss<<"subPixelInterpolationOffsetBits.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxFramebufferWidth > limits.maxFramebufferWidth)
-		{
-			ss<<"maxFramebufferWidth.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxFramebufferHeight > limits.maxFramebufferHeight)
-		{
-			ss<<"maxFramebufferHeight.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxFramebufferLayers > limits.maxFramebufferLayers)
-		{
-			ss<<"maxFramebufferLayers.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.framebufferColorSampleCounts > limits.framebufferColorSampleCounts)
-		{
-			ss<<"framebufferColorSampleCounts.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.framebufferDepthSampleCounts > limits.framebufferDepthSampleCounts)
-		{
-			ss<<"framebufferDepthSampleCounts.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.framebufferStencilSampleCounts > limits.framebufferStencilSampleCounts)
-		{
-			ss<<"framebufferStencilSampleCounts.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.framebufferNoAttachmentsSampleCounts > limits.framebufferNoAttachmentsSampleCounts)
-		{
-			ss<<"framebufferNoAttachmentsSampleCounts.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxColorAttachments > limits.maxColorAttachments)
-		{
-			ss<<"maxColorAttachments.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.sampledImageColorSampleCounts > limits.sampledImageColorSampleCounts)
-		{
-			ss<<"sampledImageColorSampleCounts.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.sampledImageIntegerSampleCounts > limits.sampledImageIntegerSampleCounts)
-		{
-			ss<<"sampledImageIntegerSampleCounts.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.sampledImageDepthSampleCounts > limits.sampledImageDepthSampleCounts)
-		{
-			ss<<"sampledImageDepthSampleCounts.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.sampledImageStencilSampleCounts > limits.sampledImageStencilSampleCounts)
-		{
-			ss<<"sampledImageStencilSampleCounts.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.storageImageSampleCounts > limits.storageImageSampleCounts)
-		{
-			ss<<"storageImageSampleCounts.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxSampleMaskWords > limits.maxSampleMaskWords)
-		{
-			ss<<"maxSampleMaskWords.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.timestampComputeAndGraphics > limits.timestampComputeAndGraphics)
-		{
-			ss<<"timestampComputeAndGraphics.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.timestampPeriod > limits.timestampPeriod)
-		{
-			ss<<"timestampPeriod.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxClipDistances > limits.maxClipDistances)
-		{
-			ss<<"maxClipDistances.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxCullDistances > limits.maxCullDistances)
-		{
-			ss<<"maxCullDistances.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.maxCombinedClipAndCullDistances > limits.maxCombinedClipAndCullDistances)
-		{
-			ss<<"maxCombinedClipAndCullDistances.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.discreteQueuePriorities > limits.discreteQueuePriorities)
-		{
-			ss<<"discreteQueuePriorities.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.pointSizeRange[0] > limits.pointSizeRange[0])
-		{
-			ss<<"pointSizeRang[0].";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.pointSizeRange[1] > limits.pointSizeRange[1])
-		{
-			ss<<"pointSizeRang[1].";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.lineWidthRange[0] > limits.lineWidthRange[0])
-		{
-			ss<<"lineWidthRang[0].";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.lineWidthRange[1] > limits.lineWidthRange[1])
-		{
-			ss<<"lineWidthRang[1].";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.pointSizeGranularity > limits.pointSizeGranularity)
-		{
-			ss<<"pointSizeGranularity.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.lineWidthGranularity > limits.lineWidthGranularity)
-		{
-			ss<<"lineWidthGranularity.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.strictLines > limits.strictLines)
-		{
-			ss<<"strictLines.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.standardSampleLocations > limits.standardSampleLocations)
-		{
-			ss<<"standardSampleLocations.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.optimalBufferCopyOffsetAlignment > limits.optimalBufferCopyOffsetAlignment)
-		{
-			ss<<"optimalBufferCopyOffsetAlignment.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.optimalBufferCopyRowPitchAlignment > limits.optimalBufferCopyRowPitchAlignment)
-		{
-			ss<<"optimalBufferCopyRowPitchAlignment.";
-			goto TESTS_FAILED;
-		}
-        else if (targetLimits.nonCoherentAtomSize > limits.nonCoherentAtomSize)
-		{
-			ss<<"nonCoherentAtomSize.";
-			goto TESTS_FAILED;
-		}
+        // from ~850 lines to ~170, thanks preprocessor <3.
+        if constexpr (false){throw std::logic_error("sorry");} // Sorry for this ugly line ...
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxImageDimension1D)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxImageDimension2D)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxImageDimension3D)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxImageDimensionCube)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxImageArrayLayers)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxTexelBufferElements)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxUniformBufferRange)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxStorageBufferRange)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxPushConstantsSize)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxMemoryAllocationCount)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxSamplerAllocationCount)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, bufferImageGranularity)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, sparseAddressSpaceSize)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxBoundDescriptorSets)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxPerStageDescriptorSamplers)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxPerStageDescriptorUniformBuffers)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxPerStageDescriptorStorageBuffers)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxPerStageDescriptorSampledImages)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxPerStageDescriptorStorageImages)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxPerStageDescriptorInputAttachments)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxPerStageResources)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxDescriptorSetSamplers)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxDescriptorSetUniformBuffers)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxDescriptorSetUniformBuffersDynamic)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxDescriptorSetStorageBuffers)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxDescriptorSetStorageBuffersDynamic)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxDescriptorSetSampledImages)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxDescriptorSetStorageImages)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxDescriptorSetInputAttachments)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxVertexInputAttributes)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxVertexInputBindings)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxVertexInputAttributeOffset)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxVertexInputBindingStride)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxVertexOutputComponents)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxTessellationGenerationLevel)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxTessellationPatchSize)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxTessellationControlPerVertexInputComponents)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxTessellationControlPerVertexOutputComponents)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxTessellationControlPerPatchOutputComponents)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxTessellationControlTotalOutputComponents)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxTessellationEvaluationInputComponents)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxTessellationEvaluationOutputComponents)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxGeometryShaderInvocations)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxGeometryInputComponents)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxGeometryOutputComponents)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxGeometryOutputVertices)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxGeometryTotalOutputComponents)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxFragmentInputComponents)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxFragmentOutputAttachments)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxFragmentDualSrcAttachments)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxFragmentCombinedOutputResources)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxComputeSharedMemorySize)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxComputeWorkGroupCount[0])
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxComputeWorkGroupCount[1])
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxComputeWorkGroupCount[2])
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxComputeWorkGroupInvocations)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxComputeWorkGroupSize[0])
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxComputeWorkGroupSize[1])
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxComputeWorkGroupSize[2])
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, subPixelPrecisionBits)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, subTexelPrecisionBits)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, mipmapPrecisionBits)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxDrawIndexedIndexValue)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxDrawIndirectCount)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxSamplerLodBias)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxSamplerAnisotropy)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxViewports)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxViewportDimensions[0])
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxViewportDimensions[1])
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, <, viewportBoundsRange[0]) // yes the operator is correct.
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, viewportBoundsRange[1])
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, viewportSubPixelBits)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, minMemoryMapAlignment)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, minTexelBufferOffsetAlignment)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, minUniformBufferOffsetAlignment)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, minStorageBufferOffsetAlignment)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, <, minTexelOffset) // Yes the operator is correct.
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxTexelOffset)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, <, minTexelGatherOffset) // Yes the operator is correct.
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxTexelGatherOffset)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, <, minInterpolationOffset)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxInterpolationOffset)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, subPixelInterpolationOffsetBits)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxFramebufferWidth)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxFramebufferHeight)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxFramebufferLayers)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, framebufferColorSampleCounts)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, framebufferDepthSampleCounts)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, framebufferStencilSampleCounts)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, framebufferNoAttachmentsSampleCounts)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxColorAttachments)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, sampledImageColorSampleCounts)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, sampledImageIntegerSampleCounts)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, sampledImageDepthSampleCounts)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, sampledImageStencilSampleCounts)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, storageImageSampleCounts)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxSampleMaskWords)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, timestampComputeAndGraphics)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, timestampPeriod)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxClipDistances)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxCullDistances)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, maxCombinedClipAndCullDistances)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, discreteQueuePriorities)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, pointSizeRange[0])
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, pointSizeRange[1])
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, lineWidthRange[0])
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, lineWidthRange[1])
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, pointSizeGranularity)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, lineWidthGranularity)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, strictLines)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, standardSampleLocations)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, optimalBufferCopyOffsetAlignment)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, optimalBufferCopyRowPitchAlignment)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetLimits, limits, >, nonCoherentAtomSize)
 
+        // features.
+        if constexpr (false){throw std::logic_error("sorry");}
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, robustBufferAccess)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, fullDrawIndexUint32)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, imageCubeArray)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, independentBlend)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, geometryShader)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, tessellationShader)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, sampleRateShading)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, dualSrcBlend)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, logicOp)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, multiDrawIndirect)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, drawIndirectFirstInstance)
+        VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, depthClamp)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, depthBiasClamp)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, fillModeNonSolid)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, depthBounds)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, wideLines)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, largePoints)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, alphaToOne)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, multiViewport)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, samplerAnisotropy)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, textureCompressionETC2)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, textureCompressionASTC_LDR)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, textureCompressionBC)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, occlusionQueryPrecise)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, pipelineStatisticsQuery)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, vertexPipelineStoresAndAtomics)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, fragmentStoresAndAtomics)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, shaderTessellationAndGeometryPointSize)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, shaderImageGatherExtended)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, shaderStorageImageExtendedFormats)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, shaderStorageImageMultisample)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, shaderStorageImageReadWithoutFormat)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, shaderStorageImageWriteWithoutFormat)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, shaderUniformBufferArrayDynamicIndexing)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, shaderSampledImageArrayDynamicIndexing)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, shaderStorageBufferArrayDynamicIndexing)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, shaderStorageImageArrayDynamicIndexing)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, shaderClipDistance)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, shaderCullDistance)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, shaderFloat64)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, shaderInt64)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, shaderInt16)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, shaderResourceResidency)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, shaderResourceMinLod)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, sparseBinding)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, sparseResidencyBuffer)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, sparseResidencyImage2D)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, sparseResidencyImage3D)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, sparseResidency2Samples)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, sparseResidency4Samples)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, sparseResidency8Samples)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, sparseResidency16Samples)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, sparseResidencyAliased )
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, variableMultisampleRate)
+		VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO(targetFeatures, features, &&, inheritedQueries)
 
-		if (targetFeatures.robustBufferAccess && features.robustBufferAccess)
-		{
-			ss<<"feature : robustBufferAccess.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.fullDrawIndexUint32 && features.fullDrawIndexUint32)
-		{
-			ss<<"feature : fullDrawIndexUint32.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.imageCubeArray && features.imageCubeArray)
-		{
-			ss<<"feature : imageCubeArray.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.independentBlend && features.independentBlend)
-		{
-			ss<<"feature : independentBlend.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.geometryShader && features.geometryShader)
-		{
-			ss<<"feature : geometryShader.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.tessellationShader && features.tessellationShader)
-		{
-			ss<<"feature : tessellationShader.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.sampleRateShading && features.sampleRateShading)
-		{
-			ss<<"feature : sampleRateShading.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.dualSrcBlend && features.dualSrcBlend)
-		{
-			ss<<"feature : dualSrcBlend.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.logicOp && features.logicOp)
-		{
-			ss<<"feature : logicOp.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.multiDrawIndirect && features.multiDrawIndirect)
-		{
-			ss<<"feature : multiDrawIndirect.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.drawIndirectFirstInstance && features.drawIndirectFirstInstance)
-		{
-			ss<<"feature : drawIndirectFirstInstance.";
-			goto TESTS_FAILED;
-		}
-        else if (targetFeatures.depthClamp && features.depthClamp)
-		{
-			ss<<"feature : depthClamp.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.depthBiasClamp && features.depthBiasClamp)
-		{
-			ss<<"feature : depthBiasClamp.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.fillModeNonSolid && features.fillModeNonSolid)
-		{
-			ss<<"feature : fillModeNonSolid.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.depthBounds && features.depthBounds)
-		{
-			ss<<"feature : depthBounds.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.wideLines && features.wideLines)
-		{
-			ss<<"feature : wideLines.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.largePoints && features.largePoints)
-		{
-			ss<<"feature : largePoints.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.alphaToOne && features.alphaToOne)
-		{
-			ss<<"feature : alphaToOne.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.multiViewport && features.multiViewport)
-		{
-			ss<<"feature : multiViewport.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.samplerAnisotropy && features.samplerAnisotropy)
-		{
-			ss<<"feature : samplerAnisotropy.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.textureCompressionETC2 && features.textureCompressionETC2)
-		{
-			ss<<"feature : textureCompressionETC2.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.textureCompressionASTC_LDR && features.textureCompressionASTC_LDR)
-		{
-			ss<<"feature : textureCompressionASTC_LDR.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.textureCompressionBC && features.textureCompressionBC)
-		{
-			ss<<"feature : textureCompressionBC.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.occlusionQueryPrecise && features.occlusionQueryPrecise)
-		{
-			ss<<"feature : occlusionQueryPrecise.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.pipelineStatisticsQuery && features.pipelineStatisticsQuery)
-		{
-			ss<<"feature : pipelineStatisticsQuery.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.vertexPipelineStoresAndAtomics && features.vertexPipelineStoresAndAtomics)
-		{
-			ss<<"feature : vertexPipelineStoresAndAtomics.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.fragmentStoresAndAtomics && features.fragmentStoresAndAtomics)
-		{
-			ss<<"feature : fragmentStoresAndAtomics.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.shaderTessellationAndGeometryPointSize && features.shaderTessellationAndGeometryPointSize)
-		{
-			ss<<"feature : shaderTessellationAndGeometryPointSize.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.shaderImageGatherExtended && features.shaderImageGatherExtended)
-		{
-			ss<<"feature : shaderImageGatherExtended.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.shaderStorageImageExtendedFormats && features.shaderStorageImageExtendedFormats)
-		{
-			ss<<"feature : shaderStorageImageExtendedFormats.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.shaderStorageImageMultisample && features.shaderStorageImageMultisample)
-		{
-			ss<<"feature : shaderStorageImageMultisample.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.shaderStorageImageReadWithoutFormat && features.shaderStorageImageReadWithoutFormat)
-		{
-			ss<<"feature : shaderStorageImageReadWithoutFormat.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.shaderStorageImageWriteWithoutFormat && features.shaderStorageImageWriteWithoutFormat)
-		{
-			ss<<"feature : shaderStorageImageWriteWithoutFormat.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.shaderUniformBufferArrayDynamicIndexing && features.shaderUniformBufferArrayDynamicIndexing)
-		{
-			ss<<"feature : shaderUniformBufferArrayDynamicIndexing.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.shaderSampledImageArrayDynamicIndexing && features.shaderSampledImageArrayDynamicIndexing)
-		{
-			ss<<"feature : shaderSampledImageArrayDynamicIndexing.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.shaderStorageBufferArrayDynamicIndexing && features.shaderStorageBufferArrayDynamicIndexing)
-		{
-			ss<<"feature : shaderStorageBufferArrayDynamicIndexing.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.shaderStorageImageArrayDynamicIndexing && features.shaderStorageImageArrayDynamicIndexing)
-		{
-			ss<<"feature : shaderStorageImageArrayDynamicIndexing.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.shaderClipDistance && features.shaderClipDistance)
-		{
-			ss<<"feature : shaderClipDistance.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.shaderCullDistance && features.shaderCullDistance)
-		{
-			ss<<"feature : shaderCullDistance.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.shaderFloat64 && features.shaderFloat64)
-		{
-			ss<<"feature : shaderFloat64.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.shaderInt64 && features.shaderInt64)
-		{
-			ss<<"feature : shaderInt64.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.shaderInt16 && features.shaderInt16)
-		{
-			ss<<"feature : shaderInt16.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.shaderResourceResidency && features.shaderResourceResidency)
-		{
-			ss<<"feature : shaderResourceResidency.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.shaderResourceMinLod && features.shaderResourceMinLod)
-		{
-			ss<<"feature : shaderResourceMinLod.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.sparseBinding && features.sparseBinding)
-		{
-			ss<<"feature : sparseBinding.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.sparseResidencyBuffer && features.sparseResidencyBuffer)
-		{
-			ss<<"feature : sparseResidencyBuffer.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.sparseResidencyImage2D && features.sparseResidencyImage2D)
-		{
-			ss<<"feature : sparseResidencyImage2D.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.sparseResidencyImage3D && features.sparseResidencyImage3D)
-		{
-			ss<<"feature : sparseResidencyImage3D.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.sparseResidency2Samples && features.sparseResidency2Samples)
-		{
-			ss<<"feature : sparseResidency2Samples.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.sparseResidency4Samples && features.sparseResidency4Samples)
-		{
-			ss<<"feature : sparseResidency4Samples.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.sparseResidency8Samples && features.sparseResidency8Samples)
-		{
-			ss<<"feature : sparseResidency8Samples.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.sparseResidency16Samples && features.sparseResidency16Samples)
-		{
-			ss<<"feature : sparseResidency16Samples.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.sparseResidencyAliased  && features.sparseResidencyAliased )
-		{
-			ss<<"feature : sparseResidencyAliased .";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.variableMultisampleRate && features.variableMultisampleRate)
-		{
-			ss<<"feature : variableMultisampleRate.";
-			goto TESTS_FAILED;
-		}
-		else if (targetFeatures.inheritedQueries && features.inheritedQueries)
-		{
-			ss<<"feature : inheritedQueries.";
-			goto TESTS_FAILED;
-		}
+        #undef VKI_ISPHYSICALDEVICEMATCHMINIMALREQUIREMENTS_TESTMACRO
 
         if (not areRequiredFamilyQueueAvailable(device, surface))
         {
@@ -2668,6 +2004,9 @@ namespace VKI
 #endif//VKI_ENABLE_DEBUG_LOGS 
 
     // TODO : this function is more complex than excpected : write some tests !
+    // TODO check this error from the validations layers :
+    // Validation : Validation Error: [ VUID-VkDeviceCreateInfo-queueFamilyIndex-02802 ] Object 0: handle = 0x5c869eca7080, type = VK_OBJECT_TYPE_PHYSICAL_DEVICE; | MessageID = 0x29498778 | vkCreateDevice(): pCreateInfo->pQueueCreateInfos[2].queueFamilyIndex (1) is not unique and was also used in pCreateInfo->pQueueCreateInfos[1].
+    // The Vulkan spec states: The queueFamilyIndex member of each element of pQueueCreateInfos must be unique within pQueueCreateInfos , except that two members can share the same queueFamilyIndex if one describes protected-capable queues and one describes queues that are not protected-capable (https://docs.vulkan.org/spec/latest/chapters/devsandqueues.html#VUID-VkDeviceCreateInfo-queueFamilyIndex-02802)
     std::vector<QueueInfo> findQueueFamilyIndices(const VkPhysicalDevice        device, 
                                                   const std::vector<QueueInfo>& queueTemplate,
                                                   const VkSurfaceKHR            surface,
