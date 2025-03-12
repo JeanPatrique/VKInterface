@@ -38,8 +38,7 @@ enum fenceNames : uint32_t
 };
 enum my_buffers : uint32_t
 {
-    STAGING_VERTEX_BUFFER = 0,
-    VERTEX_BUFFER         = 1,
+    VERTEX_BUFFER   = 0
 };
 enum my_queues : uint32_t
 {
@@ -70,8 +69,12 @@ GU::LogInterface mainScope(globalLogger, "MainScope"),
                  ;
 
 
-int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
+int main(int argc, char** argv)
 {
+    bool drawOnce=false;
+    if (argc>1)
+        drawOnce = 0 == strncmp(argv[1], "--drawOnce", 11);
+
     // Set VKI logging callback.
     VKI::registerLogsVerboseCallback    ([](const char* msg){vkiLogger.logv(msg);});
     VKI::registerLogsInfoCallback       ([](const char* msg){vkiLogger.logi(msg);});
@@ -179,8 +182,8 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
     VKI::VulkanContext vContext = VKI::createVulkanContext(VKI::createInstance(), 
                                                            wContext, 
                                                            4,   // 2*2 semaphores,
-                                                           2,   // 2 fences, 
-                                                           true // Fences signaled,
+                                                           3,   // 2 graphics fences + 1 for transfer, 
+                                                           true // Fences signaled by default,
                                                            );   // Auto best device. 
 
     // (not part of VKI) Register a simple callback to save in wContext if the window have been resized.
@@ -215,32 +218,52 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
     mainScope.logv("Logging info about the available memory.");
     VKI::logMemoryInfo(vContext.physicalDeviceMemoryProperties);
 
-    std::vector<VKI::BufferInfo> bufferInfos(1);
-    bufferInfos[STAGING_VERTEX_BUFFER] = VKI::BufferInfo{};
-    bufferInfos[STAGING_VERTEX_BUFFER].size  = sizeof(Vertex) * simpleTriangle.size();
-    bufferInfos[STAGING_VERTEX_BUFFER].usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-    bufferInfos[STAGING_VERTEX_BUFFER].memoryProperties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                                                  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT ;
-    bufferInfos[STAGING_VERTEX_BUFFER].queueFamilyIndicesSharingTheBuffer = {vContext.queueFamilies[0].info.familyIndex};
+    VKI::BufferInfo vertexBufferInfo{};
+    vertexBufferInfo.size  = sizeof(Vertex) * simpleTriangle.size();
+    vertexBufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    vertexBufferInfo.memoryProperties = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    vertexBufferInfo.queueFamilyIndicesSharingTheBuffer = {vContext.queueFamilies[GRAPHICS_QUEUE].info.familyIndex,
+                                                           vContext.queueFamilies[TRANSFER_QUEUE].info.familyIndex};
 
-    vContext.buffers = VKI::createBuffers(vContext.device, bufferInfos);
+    VKI::BufferMirror vertexBuffers = VKI::createBufferMirror(vContext.device, 
+                                                              vertexBufferInfo,
+                                                              true, // Allow write from host to device.
+                                                              false // Don't allow read from device to host.
+                                                             );
 
-    if (!VKI::allocateBuffer(vContext.device, 
-                             vContext.buffers[STAGING_VERTEX_BUFFER],
-                             vContext.physicalDeviceMemoryProperties
-                            ))
+    for (auto& buffer : std::vector<std::shared_ptr<VKI::Buffer>>{vertexBuffers.hostBuffer, vertexBuffers.deviceBuffer})
     {
-        mainScope.logf("mainScope unable to find suitable memory for the vertex buffer !");
-        std::cerr<<"Failed to find a suitable heap for the vertex memory, "
-                   "please change the requirement for the vertex buffer\n"
-                   "PS : The available memory properties should have been written to the logg file.";
-        throw std::logic_error("main : unable to find suitable memory for the vertex buffer !");
+        if (!VKI::allocateBuffer(vContext.device, 
+                                 *buffer,
+                                 vContext.physicalDeviceMemoryProperties
+                                ))
+        {
+            mainScope.logf("mainScope unable to find suitable memory for the vertex buffer !");
+            std::cerr<<"Failed to find a suitable heap for the vertex memory, "
+                       "please change the requirement for the vertex buffer\n"
+                       "PS : The available memory properties should have been written to the logg file.";
+            throw std::logic_error("main : unable to find suitable memory for the vertex buffer !");
+        }
     }
 
+    vContext.buffers.emplace_back(vertexBuffers.hostBuffer);
+    vContext.buffers.emplace_back(vertexBuffers.deviceBuffer);
+
     mainScope.logv("loading vertex data to the device.");
-    VKI::writeBuffer(vContext.device, vContext.buffers[STAGING_VERTEX_BUFFER], simpleTriangle.data()); 
-    // since no maxSize have been set : simpleTriangle.size() must be >= buffer.info.size;
-    VKI::unmapBuffer(vContext.device, vContext.buffers[STAGING_VERTEX_BUFFER]);
+    VKI::writeBuffer(vContext.device, *vertexBuffers.hostBuffer, simpleTriangle.data()); // since no maxSize have been set : simpleTriangle.size() must be >= buffer.info.size;
+    VKI::unmapBuffer(vContext.device, *vertexBuffers.hostBuffer);
+
+    // Transfering stagging vertex buffer to device vertex buffer.
+    VKI::recordPushBufferMirror(vertexBuffers, 
+                                vContext.queueFamilies[TRANSFER_QUEUE].queues[0],
+                                vContext.queueFamilies[TRANSFER_QUEUE].commands[0].PBuffers[0]
+                               );
+    VKI::SubmitInfo transferSubmitOrder{};
+    transferSubmitOrder.commandBuffers.push_back(vContext.queueFamilies[TRANSFER_QUEUE].commands[0].PBuffers[0]);
+
+    VKI::resetFence(vContext.device, vContext.fences[2]); // reset the fence before submit.
+    VKI::queueSubmit(vContext.queueFamilies[TRANSFER_QUEUE].queues[0], {transferSubmitOrder}, vContext.fences[2]);
+    VKI::waitFence(vContext.device, vContext.fences[2], UINT64_MAX, true); // enable logs.
 
     // Creating the graphics pipeline and render pass.
     VKI::GraphicsContext gContext;
@@ -332,7 +355,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
     mainScope.logv("Main loop begin.");
 
     uint32_t frameCount = 0;
-    while (!VKI::windowShouldClose(wContext))
+    do
     {
         glfwPollEvents();
 
@@ -361,6 +384,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 
         //std::this_thread::sleep_for(std::chrono::duration<double, std::milli>{16});
     }
+    while (!VKI::windowShouldClose(wContext) && !drawOnce);
     std::cout<<"\n";
 
     mainScope.logv("Main loop end.");
@@ -379,7 +403,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv)
 void drawCall(VKI::VulkanContext &vContext, VKI::WindowContext &wContext)
 {
     static std::vector<VKI::SubmitInfo> submitInfos(2);
-    static std::vector<VkBuffer>        vertexBuffers = VKI::listBuffersHandle(vContext.buffers);
+    static std::vector<VkBuffer>        vertexBuffers = {vContext.buffers[1]->buffer};
     static std::vector<VkDeviceSize>    vertexBufferOffsets = {0};
     VKI::SwapchainStatusFlags           swapchainErrors;
     const VKI::SwapchainStatusFlags     supportedSwapchainErrors = VKI::SWAPCHAIN_STATUS_OUT_OF_DATE_BIT    |

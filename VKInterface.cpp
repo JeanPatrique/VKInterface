@@ -663,8 +663,8 @@ namespace VKI
 
         // Any ressources that have been bind with the device must be destroyed here.
 
-        for (Buffer& buffer : context.buffers)
-            destroyBuffer(context.device, buffer);
+        for (std::shared_ptr<Buffer>& buffer : context.buffers)
+            destroyBuffer(context.device, *buffer);
 
         for (VkSemaphore &semaphore : context.semaphores)
             destroySemaphore(context.device, semaphore);
@@ -4193,7 +4193,7 @@ namespace VKI
             logWarningCB("destroyFrameBuffer called on a VK_NULL_HANDLE.");
     }
 
-    std::vector<Buffer> createBuffers(const VkDevice device, std::vector<BufferInfo>& bufferInfos)
+    std::vector<Buffer> createBuffers(const VkDevice device, const std::vector<BufferInfo>& bufferInfos)
     {
         std::vector<Buffer> buffers;
         buffers.reserve(bufferInfos.size());
@@ -4245,6 +4245,46 @@ namespace VKI
         logInfoCB(ss.str().c_str());
 
         return buffers;
+    }
+
+    BufferMirror createBufferMirror(const VkDevice      device,
+                                    const BufferInfo&   info, 
+                                    const bool          write,
+                                    const bool          read,
+                                    const std::optional<std::vector<uint32_t>> hostFamilyIndexAccessing,
+                                    const std::optional<std::vector<uint32_t>> deviceFamilyIndexAccessing,
+                                    const bool removeCoherenceOnDevice
+                                    )
+    {
+        BufferInfo infoH=info,
+                   infoD=info;
+
+        infoH.memoryProperties &= ~VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT; // Remove device local on the host   buffer.
+        infoH.memoryProperties |=  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT; // Add    host visible on the host   buffer.
+        infoD.memoryProperties &= ~VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT; // Remove host visible on the device buffer.
+        infoD.memoryProperties |=  VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT; // Add    device local on the device buffer.
+        
+        if (removeCoherenceOnDevice)
+            infoD.memoryProperties &= ~VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+        if (write)
+        {
+            infoH.usage |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+            infoD.usage |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        }
+        if (read)
+        {
+            infoH.usage |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+            infoD.usage |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        }
+
+        const std::vector<BufferInfo> bufferInfos = {infoH, infoD};
+        const std::vector<Buffer> bufferList = createBuffers(device, bufferInfos);
+        BufferMirror bm;
+        bm.hostBuffer   = std::make_shared<Buffer>(bufferList.front());
+        bm.deviceBuffer = std::make_shared<Buffer>(bufferList.back());
+
+        return bm;
     }
 
     void destroyBuffer(const VkDevice device, Buffer &buffer) noexcept
@@ -4972,16 +5012,40 @@ namespace VKI
         }
     }
 
-    std::vector<VkBuffer> listBuffersHandle(const std::vector<Buffer>& buffers)
+    // host to device.
+    void recordPushBufferMirror(const BufferMirror&       bufferMirror,
+                                const VkQueue&            transferQueue,
+                                const VkCommandBuffer     cmdBuffer,
+                                std::vector<VkBufferCopy> regions
+                               )
     {
-        std::vector<VkBuffer> bufferHandles;
-        bufferHandles.reserve(buffers.size());
+        cmdBeginRecordCommandBuffer(cmdBuffer, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
-        for (Buffer buffer : buffers)
-            bufferHandles.push_back(buffer.buffer);
+        for (VkBufferCopy &region : regions)
+            region.size = (region.size==VK_WHOLE_SIZE) ? bufferMirror.hostBuffer->info.size : region.size;
 
-        return bufferHandles;
+        vkCmdCopyBuffer(cmdBuffer, bufferMirror.hostBuffer->buffer, bufferMirror.deviceBuffer->buffer, regions.size(), regions.data());
+
+        cmdEndRecordCommandBuffer(cmdBuffer);
     }
+
+    // device to host.
+    void recordPullBufferMirror(const BufferMirror&       bufferMirror,
+                                const VkQueue&            transferQueue,
+                                const VkCommandBuffer     cmdBuffer,
+                                std::vector<VkBufferCopy> regions
+                               )
+    {
+        cmdBeginRecordCommandBuffer(cmdBuffer, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+
+        for (VkBufferCopy &region : regions)
+            region.size = (region.size==VK_WHOLE_SIZE) ? bufferMirror.deviceBuffer->info.size : region.size;
+
+        vkCmdCopyBuffer(cmdBuffer, bufferMirror.deviceBuffer->buffer, bufferMirror.hostBuffer->buffer, regions.size(), regions.data());
+
+        cmdEndRecordCommandBuffer(cmdBuffer);
+    }
+    
 
     void cmdDraw(VkCommandBuffer cmdBuffer, uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertexIndex, uint32_t firstInstanceIndex)
     {

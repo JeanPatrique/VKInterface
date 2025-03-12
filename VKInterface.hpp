@@ -349,13 +349,11 @@ namespace VKI
         const BufferInfo    info;
     };
 
-    /*
     struct BufferMirror // Link a Buffer (device_local) and a 'mirror' (host_visible).
     {
-        Buffer deviceBuffer,
-               hostBuffer; // Both buffer must be identical (except memoryProperties).
+        std::shared_ptr<Buffer> deviceBuffer,
+                                hostBuffer; // Both buffer must be identical (except for memoryProperties).
     };
-    */
 
     /**@brief OPTIONAL struct that bundle all resources that your application could/would need.*/
     struct VulkanContext
@@ -383,7 +381,7 @@ namespace VKI
 
         std::vector<GraphicsContext> graphicsContexts; // Fill the GraphicsContext.renderPassInfo and pipelines[x].info;
 
-        std::vector<Buffer> buffers;
+        std::vector<std::shared_ptr<Buffer>> buffers;
 
         // Those two lines below are only used by VKI, you should ignore them.
        #ifdef VKI_ENABLE_VULKAN_VALIDATION_LAYERS
@@ -515,7 +513,6 @@ namespace VKI
     std::vector<QueueInfo> getPhysicalQueueInfos(const VkPhysicalDevice, 
                                                  const VkSurfaceKHR      surface=VK_NULL_HANDLE, // surface is optional.
                                                  bool logInfo=true);
-    VkQueueFlagBits getQueueMainOperation(const VkQueueFlags) noexcept; // not used, delete it.
     // The next two function are helper function you can ignore them.
     constexpr   bool     isQueueFamilySuitable(const QueueInfo& physicalQueueFamily, const QueueInfo& requiredQueue);
   /*constexpr*/ unsigned getDistanceBetweenQueueOperations(const VkQueueFlags, const VkQueueFlags); // until C++20.
@@ -658,22 +655,29 @@ namespace VKI
     /// Buffers.
     
     // Warnings : createBuffer won't allocate and bind memory to the buffer : call allocateBuffers.
-    std::vector<Buffer> createBuffers(const VkDevice, std::vector<BufferInfo>&);
-  /*VkBuffer createBuffer(const VkDevice              device,
-                          const uint64_t              size,
-                          const VkBufferUsageFlags    usages,
-                          const std::vector<uint32_t> accessingQueues,
-                          const bool                  exclusiveAccessMode=true,
-                          const VkBufferCreateFlags   flags=0
-                         );
-    */
+    std::vector<Buffer> createBuffers(const VkDevice, const std::vector<BufferInfo>&);
     void destroyBuffer(const VkDevice, Buffer&) noexcept;
     void destroyBuffer(const VkDevice, VkBuffer&) noexcept;
 
+    /**@brief Create two Buffers : a 'Buffer' (device_local) and its 'Mirror' (host_visible).
+     * The two Buffers are identical except that one is created with DEVICE_LOCAL and the other one with HOST_VISIBLE.
+     * @param write, add TRANSFER_SRC to host and TRANSFER_DET to device.
+     * @param read , add TRANSFER_DST to host and TRANSFER_SRC to device.
+     * @param deviceFamilyIndexAccessing if specified, REPLACE the list of family index that will access the device Buffer.
+     * @param hostFamilyIndexAccessing   if specified, REPLACE the list of family index that will access the host Buffer.
+     * @param removeCoherenceOnDevice will remove (if exist) the HOST_COHERENT_BIT on the device Buffer.
+     */
+    BufferMirror createBufferMirror(const VkDevice,
+                                    const BufferInfo&, 
+                                    const bool write=true, // to device.
+                                    const bool read =true, // from device.
+                                    const std::optional<std::vector<uint32_t>> hostFamilyIndexAccessing=std::nullopt,
+                                    const std::optional<std::vector<uint32_t>> deviceFamilyIndexAccessing=std::nullopt,
+                                    const bool removeCoherenceOnDevice=true
+                                    );
 
     /**@brief Allocate memory to a buffer.
      * @return true on success, throw a runtime_error if out of memory and false if no suitable heap is found.
-     *         On Errors, the buffer should be left untouched.
      * @warning Doesn't support multi-instance memory pages.
      */
     bool allocateBuffer(const VkDevice, 
@@ -706,16 +710,27 @@ namespace VKI
     // Note! writebuffer will map the buffer if not already mapped.
     void writeBuffer(const VkDevice,
                            Buffer&,
-                     const void*,
-                     const size_t maxSize=VK_WHOLE_SIZE // of the buffer.
+                     const void*  data,
+                     const size_t maxSize=VK_WHOLE_SIZE // WHOLE_SIZE => buffer's size.
                     );
-
     void flushBuffers(const VkDevice,
                       const std::vector<Buffer>&,
                       const bool flushRead=true,
                       const bool flushWrite=true
                      );
-    std::vector<VkBuffer> listBuffersHandle(const std::vector<Buffer>& buffers); // usefull for cmdBingVertexBuffer;
+
+    // host to device.
+    void recordPushBufferMirror(const BufferMirror&,
+                                const VkQueue&,      // transfer queue !
+                                const VkCommandBuffer,
+                                std::vector<VkBufferCopy> regions={{0,0,VK_WHOLE_SIZE}} // whole_size == buffer.host.size;
+                               );
+    // device to host.
+    void recordPullBufferMirror(const BufferMirror&,
+                                const VkQueue&,      // transfer queue !
+                                const VkCommandBuffer,
+                                std::vector<VkBufferCopy> regions={{0,0,VK_WHOLE_SIZE}} // whole_size == buffer.device.size;
+                               );
 
     /// Commands.
     void createCommandFromCommandInfo(const VkDevice, const uint32_t queueFamilyIndex, const CommandInfo&, Command&);
@@ -736,27 +751,35 @@ namespace VKI
                                                      );
 
     /**@brief Begin the record of a command buffer.
-     * @warning This function has a UB if VkCommandBuffer is a SECONDARY buffer.*/
+     * @warning This function has an UB if VkCommandBuffer is a SECONDARY buffer.*/
     void cmdBeginRecordCommandBuffer(VkCommandBuffer,
-                                  const VkCommandBufferUsageFlags &flags=0
-                                 );
+                                     const VkCommandBufferUsageFlags &flags=0
+                                    );
     /**@brief Begin the record of a command buffer.*/
     void cmdBeginRecordCommandBuffer(VkCommandBuffer, 
-                                  const VkCommandBufferInheritanceInfo&,
-                                  const VkCommandBufferUsageFlags &flags=0
-                                 );
+                                     const VkCommandBufferInheritanceInfo&,
+                                     const VkCommandBufferUsageFlags &flags=0
+                                    );
     void cmdResetCommandBuffer(VkCommandBuffer, bool willBeReuse=true);
     void cmdEndRecordCommandBuffer(VkCommandBuffer);
     void cmdBeginRenderPass(VkCommandBuffer,
-                         const VkRenderPass, 
-                         const VkFramebuffer, 
-                         const VkRect2D renderArea, 
-                         const std::vector<VkClearValue>&,
-                         const VkSubpassContents
+                            const VkRenderPass, 
+                            const VkFramebuffer, 
+                            const VkRect2D renderArea, 
+                            const std::vector<VkClearValue>&,
+                            const VkSubpassContents
+                           );
+    void cmdBindPipeline(      VkCommandBuffer, 
+                         const VkPipeline, 
+                         const VkPipelineBindPoint bindPoint=VK_PIPELINE_BIND_POINT_GRAPHICS
                         );
-    void cmdBindPipeline(VkCommandBuffer, const VkPipeline, const VkPipelineBindPoint bindPoint=VK_PIPELINE_BIND_POINT_GRAPHICS);
     //void cmdBindVertexBuffers(VkCommandBuffer, const std::vector<VkBuffer>&); // just use vkCmdBindVertexBuffer.
-    void cmdDraw(VkCommandBuffer, uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertexIndex, uint32_t firstInstanceIndex);
+    void cmdDraw(VkCommandBuffer, 
+                 uint32_t vertexCount, 
+                 uint32_t instanceCount, 
+                 uint32_t firstVertexIndex, 
+                 uint32_t firstInstanceIndex
+                );
     void cmdEndRenderPass(VkCommandBuffer cmdBuffer);
 
     /// Synchronisation :
