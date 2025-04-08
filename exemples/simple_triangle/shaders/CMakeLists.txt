@@ -2,16 +2,6 @@ cmake_minimum_required(VERSION 3.16)
 
 message("-- Configure shaders compilation")
 
-# Create a function to compile a glsl shader to a spir-v bytecode.
-function(func_CompileShader input output)
-    add_custom_command(
-        OUTPUT "${output}"
-        COMMAND glslc ARGS "${input}" -o "${output}" 
-        MAIN_DEPENDENCY "${input}"
-        VERBATIM
-    )
-endfunction()
-
 set(SHADER_SOURCES
 	"quad.vert"
 	"quad.frag"
@@ -31,7 +21,7 @@ foreach( SHADER_SOURCE ${SHADER_SOURCES})
 
 endforeach()
 
-add_custom_target(compile_shaders ALL
+add_custom_target(simpleTriangle_compile_shaders ALL
     DEPENDS ${SHADER_COMPILED}
 )
 

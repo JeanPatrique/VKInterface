@@ -51,9 +51,19 @@ if (${VKI_BUILD_EXEMPLE_EXECUTABLES})
     message("-- Building exemples.")
     project("Vki_demo")
 
-    include_directories("${CMAKE_CURRENT_SOURCE_DIR}/exemples")
+    # Create a function to compile a glsl shader to a spir-v bytecode.
+    function(func_CompileShader input output)
+        add_custom_command(
+            OUTPUT "${output}"
+            COMMAND glslc ARGS "${input}" -o "${output}" 
+            MAIN_DEPENDENCY "${input}"
+            VERBATIM
+        )
+    endfunction()
 
+    include_directories("${CMAKE_CURRENT_SOURCE_DIR}/exemples")
     add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/exemples/simple_triangle")
+    #add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/exemples/dummyEngine") # It took so long :/, I'd rather make a true one straight.
     #add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/exemples/tests") # TODO uncomment this !
     
     # 

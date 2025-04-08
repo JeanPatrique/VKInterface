@@ -13,7 +13,7 @@
 #include "utilities.hpp" // VKI isn't meant to be stand-alone.
 
 #define HEAVY_DEBUG false     // flush every log entries (python speed but back-trace segfault).
-#define VKI_ENABLE_DEBUG_LOGS // extrat logs to find some nasty bugs.
+#define VKI_ENABLE_DEBUG_LOGS // extra logs to find some nasty bugs.
 
 //Helper functions.
 void drawCall(VKI::VulkanContext &vContext, VKI::WindowContext &wContext);
@@ -91,7 +91,7 @@ int main(int argc, char** argv)
 
     // Register minimals requirements.
     VKI::PhysicalDeviceMinimalRequirement minRqd;
-    VKI::getNullPhysicalDeviceMinimalRequirement(minRqd); // Set all spec to 0 or VK_FALSE, so we only enable what we need.
+    VKI::resetPhysicalDeviceMinimalRequirement(minRqd); // Set all spec to 0 or VK_FALSE, so we only enable what we need.
 
     minRqd.swapChainInfo.capabilities.minImageCount = 2; // By default VKI create the maximum images available.
     minRqd.swapChainInfo.capabilities.maxImageCount = 0; // =inf : If gpu max is also 0 : VKI will create VKI_MAX_IMAGE_COUNT_IF_UNLIMITED (16 imgs).
@@ -110,6 +110,8 @@ int main(int argc, char** argv)
     minRqd.swapChainInfo.presentModes[1] = VK_PRESENT_MODE_MAILBOX_KHR;   // aka immediate mode without tearing.
     minRqd.swapChainInfo.presentModes[0] = VK_PRESENT_MODE_FIFO_KHR;      // v-sync.
     minRqd.swapChainInfo.presentModes[2] = VK_PRESENT_MODE_IMMEDIATE_KHR; // unlimited frame rate : may cause tearing.
+    //minRqd.swapChainInfo.queueFamilyIndicesSharingTheSwapChain = ?; // Auto filled with all presentable queues (in queueInfos (see below)).
+    // TODO -> this way, no transfere queue can copy images to the swapchain ?!
 
     // Queues.
     // note : You should query the physical device's queue families (with getPhysicalQueueInfos) before 
@@ -122,7 +124,6 @@ int main(int argc, char** argv)
     minRqd.queueInfos[GRAPHICS_QUEUE].priorities[0] = 1.0f;
     minRqd.queueInfos[GRAPHICS_QUEUE].operations = VK_QUEUE_GRAPHICS_BIT;
     minRqd.queueInfos[GRAPHICS_QUEUE].isPresentable = true;
-    minRqd.swapChainInfo.queueFamilyIndicesSharingTheSwapChain = {0}; // TODO ENORME ERREUR ICI !!
 
     minRqd.queueInfos[GRAPHICS_QUEUE].cmdPoolInfos.resize(1);
     minRqd.queueInfos[GRAPHICS_QUEUE].cmdPoolInfos[0].poolsCount = 1;
@@ -197,7 +198,7 @@ int main(int argc, char** argv)
 
     // meshes :
 
-    VkVertexInputBindingDescription  meshVertexBindingDescription;
+    VkVertexInputBindingDescription meshVertexBindingDescription;
     meshVertexBindingDescription.binding   = 0;              // Id of the binding (i.g. vkCmdBindVertexBuffer).
     meshVertexBindingDescription.stride    = sizeof(Vertex); // How much data per vertex shader.
     meshVertexBindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;   // Move to the next [Vertex] after each verticies (vertex shader call).
@@ -266,7 +267,7 @@ int main(int argc, char** argv)
     VKI::waitFence(vContext.device, vContext.fences[2], UINT64_MAX, true); // enable logs.
 
     // Creating the graphics pipeline and render pass.
-    VKI::GraphicsContext gContext;
+    VKI::RenderPass renderPass;
 
     VKI::PipelineInfo pipelineInfo; 
     pipelineInfo.subpassIndex             = 0;
@@ -321,22 +322,22 @@ int main(int argc, char** argv)
     renderPassInfo.subPassDependencies[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
     renderPassInfo.subPassDependencies[0].dependencyFlags = 0;
 
-    gContext.pipelines.resize(1);
-    gContext.pipelines[0].info = pipelineInfo;
-    gContext.renderPassInfo = renderPassInfo;
+    renderPass.pipelines.resize(1);
+    renderPass.pipelines[0].info = pipelineInfo;
+    renderPass.renderPassInfo = renderPassInfo;
 
-    vContext.graphicsContexts.resize(1);
-    vContext.graphicsContexts[0] = gContext;
+    vContext.renderPasses.resize(1);
+    vContext.renderPasses[0] = renderPass;
 
-    /// Create the VkPipelineLayout/VKRenderPass/VkPipeline
-    vContext.graphicsContexts[0].pipelines[0].layout = VKI::createPipelineLayout(vContext.device, 
-                                                            vContext.graphicsContexts[0].pipelines[0].info);
-    vContext.graphicsContexts[0].renderPass = VKI::createRenderPass(vContext.device, 
-                                                            vContext.graphicsContexts[0].renderPassInfo);
-    vContext.graphicsContexts[0].pipelines[0].pipeline = VKI::createGraphicsPipeline(vContext.device, 
-                                                            vContext.graphicsContexts[0].pipelines[0].layout,
-                                                            vContext.graphicsContexts[0].renderPass,
-                                                            vContext.graphicsContexts[0].pipelines[0].info);
+    /// Create the VkPipelineLarenderPassenderPass/VkPipeline
+    vContext.renderPasses[0].pipelines[0].layout = VKI::createPipelineLayout(vContext.device, 
+                                                            vContext.renderPasses[0].pipelines[0].info);
+    vContext.renderPasses[0].renderPass = VKI::createRenderPass(vContext.device, 
+                                                            vContext.renderPasses[0].renderPassInfo);
+    vContext.renderPasses[0].pipelines[0].pipeline = VKI::createGraphicsPipeline(vContext.device, 
+                                                            vContext.renderPasses[0].pipelines[0].layout,
+                                                            vContext.renderPasses[0].renderPass,
+                                                            vContext.renderPasses[0].pipelines[0].info);
 
     vContext.swapchainFramebuffers.resize(vContext.swapchainImageViews.size());
     for (size_t i(0) ; i<vContext.swapchainFramebuffers.size() ; i++)
@@ -344,7 +345,7 @@ int main(int argc, char** argv)
         vContext.swapchainFramebuffers[i] = VKI::createFramebuffer(vContext.device,
                                                                    vContext.swapChainInfo.capabilities.currentExtent.width,
                                                                    vContext.swapChainInfo.capabilities.currentExtent.height,
-                                                                   vContext.graphicsContexts.front().renderPass,
+                                                                   vContext.renderPasses.front().renderPass,
                                                                    { vContext.swapchainImageViews[i] }
                                                                   );
     }
@@ -414,7 +415,7 @@ void drawCall(VKI::VulkanContext &vContext, VKI::WindowContext &wContext)
     currentFrame = (currentFrame+1)%2; // use & 2 ?? TODO
 
     VkQueue         &queue      = vContext.queueFamilies[0].queues[0];                // only one queue is used.
-    VkPipeline      &pipeline   = vContext.graphicsContexts[0].pipelines[0].pipeline; // as only one pipeline exist.
+    VkPipeline      &pipeline   = vContext.renderPasses[0].pipelines[0].pipeline; // as only one pipeline exist.
     VkCommandBuffer &cmdBuffer  = vContext.queueFamilies[0].commands[0].PBuffers[currentFrame];
 
 
@@ -446,7 +447,7 @@ void drawCall(VKI::VulkanContext &vContext, VKI::WindowContext &wContext)
     VKI::cmdBeginRecordCommandBuffer(cmdBuffer);
 
     VKI::cmdBeginRenderPass(cmdBuffer,
-                         vContext.graphicsContexts[0].renderPass, 
+                         vContext.renderPasses[0].renderPass, 
                          vContext.swapchainFramebuffers[scImageIndex],
                          {0,0,vContext.swapChainInfo.capabilities.currentExtent.width, vContext.swapChainInfo.capabilities.currentExtent.height},
                          { {{{0.0f, 0.0f, 0.0f, 1.0f}}} },
@@ -480,7 +481,16 @@ void drawCall(VKI::VulkanContext &vContext, VKI::WindowContext &wContext)
 
 void reCreateSwapchain(VKI::VulkanContext &vContext, VKI::WindowContext &wContext)
 {
-    mainScope.logi("Recreating the swapchain begin.");
+    // Logs surface size change :
+    static std::pair<unsigned, unsigned> dims = {vContext.swapChainInfo.capabilities.currentExtent.width, vContext.swapChainInfo.capabilities.currentExtent.height};
+    std::stringstream ss;
+    ss<<"Recreating the swapchain begin : from ";
+    ss<<dims.first<<"x"<<dims.second<<" to ";
+    ss<<vContext.swapChainInfo.capabilities.currentExtent.width<<"x";
+    ss<<vContext.swapChainInfo.capabilities.currentExtent.height;
+    mainScope.logi(ss.str().c_str());
+    dims = {vContext.swapChainInfo.capabilities.currentExtent.width, vContext.swapChainInfo.capabilities.currentExtent.height};
+
     enableVkiLogs();      //
     disableVkiInfoLogs(); // Only capture warnings/error.
 
@@ -520,7 +530,7 @@ RESIZE_SWAPCHAIN: // Store the new extend :
         vContext.swapchainFramebuffers[i] = VKI::createFramebuffer(vContext.device,
                                                                    vContext.swapChainInfo.capabilities.currentExtent.width,
                                                                    vContext.swapChainInfo.capabilities.currentExtent.height,
-                                                                   vContext.graphicsContexts.front().renderPass,
+                                                                   vContext.renderPasses.front().renderPass,
                                                                    { vContext.swapchainImageViews[i] }
                                                                   );
     }

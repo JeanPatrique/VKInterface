@@ -270,10 +270,14 @@ namespace VKI
         registerLogsFatalErrorCallback( nullCB);
     }
 
-    WindowContext createWindowContext(unsigned width, unsigned height, std::string title)
+    WindowContext createWindowContext(unsigned width, 
+                                      unsigned height, 
+                                      std::string title,
+                                      GLFWmonitor* monitor
+                                     )
     {
         WindowContext wc{};
-        wc.window              = glfwCreateWindow(width, height, title.c_str(), nullptr, nullptr);
+        wc.window              = glfwCreateWindow(width, height, title.c_str(), monitor, nullptr);
 
         logInfoCB("A new Window has been created.");
 
@@ -549,7 +553,6 @@ namespace VKI
         else
             context.physicalDevice = physicalDevice;
 
-        // TOIMPROVE -> create a logMemoryInfo function that log the memory specs.
         logInfoCB("createVulkanContext fetch physicalDeviceMemoryProperties."); 
         vkGetPhysicalDeviceMemoryProperties(context.physicalDevice, &context.physicalDeviceMemoryProperties);
 
@@ -560,14 +563,14 @@ namespace VKI
                                             context.surface
                                            );
 
-        logInfoCB("createVulkanContext creating logical device.");
+        logInfoCB("createVulkanContext call createLogicalDevice.");
         context.device  = createLogicalDevice(
                                 context.physicalDevice, 
                                 queueInfos,
                                 physicalDeviceMinimalRequirement.deviceExtensions
                                 );
 
-        logInfoCB("createVulkanContext retrieving queue(s).");
+        logInfoCB("createVulkanContext retrive queue(s).");
         context.queueFamilies.resize(queueInfos.size());
         for (size_t i(0) ; i<context.queueFamilies.size(); i++)
         {
@@ -575,7 +578,7 @@ namespace VKI
             context.queueFamilies[i].queues = getQueueFromDevice(context.device, context.queueFamilies[i].info);
         }
 
-        logInfoCB("createVulkanContext creating commands pools and allocating command buffers.");
+        logInfoCB("createVulkanContext create commands pools and allocating command buffers.");
         for (QueueFamily& queueFamily : context.queueFamilies)
         {
             const QueueInfo& qInfo = queueFamily.info;
@@ -600,6 +603,7 @@ namespace VKI
         context.swapChainInfo = physicalDeviceMinimalRequirement.swapChainInfo;
         updateSwapchainExtents(context.physicalDevice, context.surface, windowContext, context.swapChainInfo);
         discardUnsuportedFormatsAndPresentModes(context.swapChainInfo, context.physicalDevice, context.surface);
+        context.swapChainInfo.queueFamilyIndicesSharingTheSwapChain = listQueueSharingTheSwapchain(context.queueFamilies);
 
         context.swapChain = createSwapChain(context.device,
                                             context.swapChainInfo,
@@ -683,8 +687,8 @@ namespace VKI
         for (size_t i(0) ; i<context.swapchainFramebuffers.size() ; i++)
             destroyFrameBuffer(context.device, context.swapchainFramebuffers[i]);
 
-        for (size_t i(0) ; i<context.graphicsContexts.size() ; i++) 
-            destroyGraphicsContext(context.device, context.graphicsContexts[i]);
+        for (size_t i(0) ; i<context.renderPasses.size() ; i++) 
+            destroyRenderPass(context.device, context.renderPasses[i]);
 
         if (context.swapChain != VK_NULL_HANDLE)
         {
@@ -2153,7 +2157,6 @@ namespace VKI
             }
         }
 
-
     #ifdef VKI_ENABLE_DEBUG_LOGS 
         if (logInfo)
             deleteMeImADebuggingFunction(suitableFamilies);
@@ -2175,106 +2178,6 @@ namespace VKI
         }
 
         return requiredQueues;
-
-        /*
-        // Main usage of this family (Graphics xor Compute xor transfer) + QueueInfo.
-        typedef std::vector<std::pair<VkQueueFlagBits, QueueInfo>> SortedQueue;
-        SortedQueue rqdSrtQueues, 
-                    phySrtQueues;
-
-        std::vector<QueueInfo> physicalQueues = getPhysicalQueueInfos(device, surface);
-        rqdSrtQueues.reserve(requiredQueues.size());
-        phySrtQueues.reserve(physicalQueues.size());
-
-        // Sorting physical queue families and user requested queue into phySrtQueues and rqdSrtQueues;
-        for (const QueueInfo info : requiredQueues) // Fill rqdSrtQueue.
-        {
-            VkQueueFlagBits mainOperation = getQueueMainOperation(info.operations);
-            if (mainOperation == 0)
-                logErrorCB("findQueueFamilyIndices a REQUIRED queue have no supported operation ??? this queue will be ignored.");
-            else
-                rqdSrtQueues.push_back({mainOperation, info});
-        }
-
-        for (const QueueInfo info : physicalQueues) // Fill phySrtQueue.
-        {
-            VkQueueFlagBits mainOperation = getQueueMainOperation(info.operations);
-            if (mainOperation == 0)
-                logErrorCB("findQueueFamilyIndices a PHYSICAL queue have no supported operation ??? this queue will be ignored.");
-            phySrtQueues.push_back({mainOperation, info});
-        }
-
-        if (logInfo)
-        {
-            std::stringstream ss;
-            ss<<"findQueueFamilyIndices extra logs : \n";
-            bool isPhysical = true;
-            for (auto srtQueues : {phySrtQueues, rqdSrtQueues})
-            {
-                if (isPhysical)
-                    ss<<"Physical queues :\n";
-                else
-                    ss<<"Required queues :\n";
-
-                for (std::pair<VkQueueFlagBits, QueueInfo> srtQueue : srtQueues)
-                {
-                    ss<<"Queue in family ";
-                    if (isPhysical)
-                        ss<<std::dec<<srtQueue.second.familyIndex;
-                    else
-                        ss<<"UNKOWN";
-                    ss<<" have the main usage set to : "
-                      <<queueFlagBitsToString(static_cast<VkQueueFlags>(srtQueue.first))<<"\n";
-                }
-                ss<<"\n";
-                isPhysical=false;
-            }
-
-            logInfoCB(ss.str().c_str());
-        }
-
-        std::vector<uint32_t> phyQueueInstanceCount(phySrtQueues.size(), 0);
-        std::stack<std::pair<VkQueueFlagBits, QueueInfo>> todoStack, todoLaterStack;
-        const std::vector<VkQueueFlagBits> operationPriorities = { 
-#ifdef VK_KHR_video_decode_queue
-            VK_QUEUE_VIDEO_DECODE_BIT_KHR,
-#endif
-#ifdef VK_KHR_video_encode_queue
-            VK_QUEUE_VIDEO_ENCODE_BIT_KHR,
-#endif
-            VK_QUEUE_GRAPHICS_BIT,
-            VK_QUEUE_COMPUTE_BIT,
-            VK_QUEUE_TRANSFER_BIT
-        };
-
-        // fill todoStack
-        for (auto i : rqdSrtQueues)
-            todoStack.push(i);
-
-        for (const VkQueueFlagBits priorityFlag : operationPriorities)
-        {
-            while (!todoStack.empty())
-            {
-                std::pair<VkQueueFlagBits, QueueInfo> item = todoStack.top();
-                todoStack.pop();
-
-                if (item.first != priorityFlag)
-                {
-                    todoLaterStack.push(item);
-                    continue;
-                }
-
-
-
-            }
-
-            std::swap(todoStack, todoLaterStack);
-        }
-
-        std::exit(-1);
-
-        */
-
     }
 
     bool areRequiredFamilyQueueAvailable(const VkPhysicalDevice device, const VkSurfaceKHR surface)
@@ -2321,6 +2224,17 @@ namespace VKI
         queueCreateInfo.pQueuePriorities = info.priorities;
 
         return queueCreateInfo;
+    }
+
+    std::set<uint32_t> listQueueSharingTheSwapchain(const std::vector<QueueFamily>& families) noexcept
+    {
+        std::set<uint32_t> queueIndicesSharingTheSwapchain;
+        for ( const QueueFamily & family : families)
+        {
+            if (family.info.isPresentable)
+                queueIndicesSharingTheSwapchain.insert(family.info.familyIndex);
+        }
+        return queueIndicesSharingTheSwapchain;
     }
 
     std::string queueFlagBitsToString(VkQueueFlags flags) noexcept
@@ -4052,19 +3966,19 @@ namespace VKI
             logWarningCB("destroyShaderModule have been called on a empty (VK_NULL_HANDLE) shaderModule.");
     }
 
-    void destroyGraphicsContext(const VkDevice device, GraphicsContext& gContext) noexcept
+    void destroyRenderPass(const VkDevice device, RenderPass& renderPass) noexcept
     {
-        logInfoCB("destroyGraphicsContext have been called.");
+        logInfoCB("destroyRenderPass have been called.");
 
-        for (size_t i(0) ; i<gContext.pipelines.size() ; i++)
+        for (size_t i(0) ; i<renderPass.pipelines.size() ; i++)
         {
-            destroyPipeline                 (device, gContext.pipelines[i].pipeline);
-            destroyPipelineLayout           (device, gContext.pipelines[i].layout);
-            destroyPipelineInfoShaderModules(device, gContext.pipelines[i].info);
+            destroyPipeline                 (device, renderPass.pipelines[i].pipeline);
+            destroyPipelineLayout           (device, renderPass.pipelines[i].layout);
+            destroyPipelineInfoShaderModules(device, renderPass.pipelines[i].info);
         }
-        destroyRenderPass(device, gContext.renderPass);
+        destroyRenderPass(device, renderPass.renderPass);
 
-        logInfoCB("Successfully destroyed a full graphicsContext.");
+        logInfoCB("Successfully destroyed a full RenderPass.");
     }
 
     VkShaderModule createShaderModule(const VkDevice device, const std::vector<char>& spirvCode)
@@ -4253,16 +4167,20 @@ namespace VKI
                                     const bool          read,
                                     const std::optional<std::vector<uint32_t>> hostFamilyIndexAccessing,
                                     const std::optional<std::vector<uint32_t>> deviceFamilyIndexAccessing,
-                                    const bool removeCoherenceOnDevice
+                                    const bool removeCoherenceOnDevice,
+                                    const bool setupForHostToDeviceBond
                                     )
     {
         BufferInfo infoH=info,
                    infoD=info;
 
-        infoH.memoryProperties &= ~VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT; // Remove device local on the host   buffer.
-        infoH.memoryProperties |=  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT; // Add    host visible on the host   buffer.
-        infoD.memoryProperties &= ~VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT; // Remove host visible on the device buffer.
-        infoD.memoryProperties |=  VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT; // Add    device local on the device buffer.
+        if (setupForHostToDeviceBond)
+        {
+            infoH.memoryProperties &= ~VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT; // Remove device local on the host   buffer.
+            infoH.memoryProperties |=  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT; // Add    host visible on the host   buffer.
+            infoD.memoryProperties &= ~VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT; // Remove host visible on the device buffer.
+            infoD.memoryProperties |=  VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT; // Add    device local on the device buffer.
+        }
         
         if (removeCoherenceOnDevice)
             infoD.memoryProperties &= ~VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
@@ -4287,12 +4205,15 @@ namespace VKI
         return bm;
     }
 
-    void destroyBuffer(const VkDevice device, Buffer &buffer) noexcept
+    void destroyBuffer(const VkDevice device, Buffer &buffer, const bool free_memory) noexcept
     {
         destroyBuffer(device, buffer.buffer);
-        freeMemory   (device, buffer.memory);
         buffer.buffer=VK_NULL_HANDLE;
-        buffer.memory=VK_NULL_HANDLE;
+        if (free_memory)
+        {
+            freeMemory   (device, buffer.memory);
+            buffer.memory=VK_NULL_HANDLE;
+        }
         logInfoCB("destroyBuffer (Buffer) successfully destroyed a Buffer struct.");
     }
 
@@ -5308,17 +5229,17 @@ namespace VKI
         return same;
     }
 
-    /*constexpr*/ void getNullPhysicalDeviceMinimalRequirement(PhysicalDeviceMinimalRequirement& minRqd)
+    /*constexpr*/ void resetPhysicalDeviceMinimalRequirement(PhysicalDeviceMinimalRequirement& minRqd)
     {
 		minRqd.features.robustBufferAccess				    	= VK_FALSE ;
 		minRqd.features.fullDrawIndexUint32					    = VK_FALSE ;
 		minRqd.features.imageCubeArray							= VK_FALSE ;
 		minRqd.features.independentBlend						= VK_FALSE ;
-		minRqd.features.geometryShader							= VK_FALSE ; // Might be intresting
+		minRqd.features.geometryShader							= VK_FALSE ;
 		minRqd.features.tessellationShader						= VK_FALSE ;
 		minRqd.features.sampleRateShading						= VK_FALSE ;
 		minRqd.features.dualSrcBlend							= VK_FALSE ;
-		minRqd.features.logicOp					    		    = VK_FALSE ; // Might be intresting (Keep in mind for Digitsim).
+		minRqd.features.logicOp					    		    = VK_FALSE ;
 		minRqd.features.multiDrawIndirect						= VK_FALSE ;
 		minRqd.features.drawIndirectFirstInstance				= VK_FALSE ; 
         minRqd.features.depthClamp					    		= VK_FALSE ;
@@ -5349,8 +5270,8 @@ namespace VKI
 		minRqd.features.shaderStorageImageArrayDynamicIndexing	= VK_FALSE ;
 		minRqd.features.shaderClipDistance						= VK_FALSE ;
 		minRqd.features.shaderCullDistance						= VK_FALSE ;
-		minRqd.features.shaderFloat64							= VK_FALSE ; // Might be intresting;
-		minRqd.features.shaderInt64							    = VK_FALSE ; // Might be intresting;
+		minRqd.features.shaderFloat64							= VK_FALSE ;
+		minRqd.features.shaderInt64							    = VK_FALSE ;
 		minRqd.features.shaderInt16							    = VK_FALSE ;
 		minRqd.features.shaderResourceResidency				    = VK_FALSE ;
 		minRqd.features.shaderResourceMinLod			    	= VK_FALSE ;
@@ -5485,7 +5406,7 @@ namespace VKI
 
         //minRqd.swapChainInfo.capabilities.
     /*uint32_t*/                         minRqd.swapChainInfo.capabilities.minImageCount            = 1;
-    /*uint32_t*/                         minRqd.swapChainInfo.capabilities.maxImageCount            = 0;//i.e. 64.
+    /*uint32_t*/                         minRqd.swapChainInfo.capabilities.maxImageCount            = 0;
     /*VkExtent2D*/                       minRqd.swapChainInfo.capabilities.currentExtent.width      = -1;
     /*VkExtent2D*/                       minRqd.swapChainInfo.capabilities.currentExtent.height     = -1;
     /*VkExtent2D*/                       minRqd.swapChainInfo.capabilities.minImageExtent.width     = -1;
@@ -5536,7 +5457,7 @@ namespace VKI
     }
 
    #ifdef VKI_ENABLE_VULKAN_VALIDATION_LAYERS
-    /**@brief Manually load the ckCreateDebugUtilsMessengerEXT and wrap it into a local function.
+    /**@brief Manually load the vkCreateDebugUtilsMessengerEXT and wrap it into a local function.
      */
     void destroyInstanceDebugUtilsMessengerEXT (
             VkInstance instance, 

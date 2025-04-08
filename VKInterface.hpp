@@ -79,7 +79,8 @@ namespace VKI
     /**@brief Groups every related information about a window. */
 	struct WindowContext
 	{
-        GLFWwindow* window;
+        GLFWwindow*  window = nullptr;
+        GLFWmonitor* monitor= nullptr;
 
         bool manualShouldClose = false; // Allow user to manually make windowShouldClose return true if set.
         bool forceWindowOpen   = true;  // If set to false, windowShouldClose won't ever return true.
@@ -188,7 +189,7 @@ namespace VKI
     struct PipelineInfo
     {
         VkPipelineCreateFlags flags = 0;
-        uint32_t              subpassIndex; // Which subpass in the VkRenderPass the pipeline is use for.
+        uint32_t              subpassIndex; // Which subpass in the VkRenderPass this pipeline is use for.
 
         // Shader module are required to create the pipeline (when calling createPipeline), but not after.
         VkShaderModule vertexShader                 = VK_NULL_HANDLE, 
@@ -219,12 +220,12 @@ namespace VKI
         std::vector<VkVertexInputAttributeDescription> vertexInputAttributeDescriptions;
 
         VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-        bool enablePrimitiveRestart = true; // If enabled, index -1 will break *_STRIP primitives.
+        bool enablePrimitiveRestart  = false; // If enabled, index -1 will break *_STRIP primitives.
 
         // Warnings, a feature must be enabled to use multiple viewport.
         std::vector<VkViewport> viewports; // Can be empty if set as dynamic state.
         std::vector<VkRect2D>   scissors;  // Same.
-                                           // TODO : TOFIND : is size must be eq to viewport.size() ?
+                                           // TODO : ?? Is scissors's size must be eq to viewport.size() ??
         // Rasterization options:
         //physicalDeviceMinimalRequirement.features.depthClamp; // to enable depthClamp.
         bool rasterizerDiscardEnable  = false; // Disable rasterizer (disable writing fragments to a frame buffer).
@@ -258,7 +259,7 @@ namespace VKI
         VkBool32    colorBlendEnableLogicOp     = VK_FALSE;
         VkLogicOp   colorBlendLogicOp           = VK_LOGIC_OP_COPY;
         float       colorBlendBlendConstants[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-        VkPipelineColorBlendStateCreateFlags colorBlendFlags = 0; // Too specific for this small lib (ignore it).
+        VkPipelineColorBlendStateCreateFlags colorBlendFlags = 0;
 
         // Pipeline layout.
         // Other value than zero require : VK_EXT_graphics_pipeline_library.
@@ -301,18 +302,18 @@ namespace VKI
         std::vector<VkSubpassDependency>     subPassDependencies;
     };
 
-    struct GraphicsContext_pipeline
+    struct RenderPass_pipeline
     {
         PipelineInfo       info;
         VkPipelineLayout   layout;
         VkPipeline         pipeline;
     };
 
-    struct GraphicsContext // Should it be renamed to RenderPass (RenderPass::renderPass doesn't sound good).
+    struct RenderPass
     {
-        RenderPassInfo                          renderPassInfo;
-        VkRenderPass                            renderPass = VK_NULL_HANDLE;
-        std::vector<GraphicsContext_pipeline>   pipelines;
+        RenderPassInfo                   renderPassInfo;
+        VkRenderPass                     renderPass = VK_NULL_HANDLE;
+        std::vector<RenderPass_pipeline> pipelines;
     };
 
     /*
@@ -331,6 +332,7 @@ namespace VKI
         VkBufferUsageFlags2   usage2    = 0;
         bool                  useUsage2 = false;
     #else
+        const uint32_t        usage2    = 0;
         const bool            useUsage2 = false;
     #endif
 
@@ -372,14 +374,14 @@ namespace VKI
         VkSwapchainKHR              swapChain = VK_NULL_HANDLE;
         std::vector<VkImage>        swapchainImages;
         std::vector<VkImageView>    swapchainImageViews;
-        std::vector<VkFramebuffer>  swapchainFramebuffers; // createVulkanContext won't initialize this,
-                                                           // unless graphicsContexts isn't empty (TODO).
-        std::vector<VkSemaphore> semaphores;
-        std::vector<VkFence>     fences;
+        std::vector<VkFramebuffer>  swapchainFramebuffers; // createVulkanContext won't initialize this !
+
+        std::vector<VkSemaphore>    semaphores;
+        std::vector<VkFence>        fences;
 
         // Below this point, createVulkanContext won't initialise more field.
 
-        std::vector<GraphicsContext> graphicsContexts; // Fill the GraphicsContext.renderPassInfo and pipelines[x].info;
+        std::vector<RenderPass> renderPasses; // Fill the renderPasses.renderPassInfo and pipelines[x].info;
 
         std::vector<std::shared_ptr<Buffer>> buffers;
 
@@ -427,7 +429,11 @@ namespace VKI
     void terminate(); // Terminate glfw / ! \ Must be the LAST  function to be called.
 
     /// WindowContext :
-    WindowContext createWindowContext(unsigned width, unsigned height, std::string title);
+    WindowContext createWindowContext(unsigned width, 
+                                      unsigned height, 
+                                      std::string title,
+                                      GLFWmonitor* monitor = nullptr // nullptr make call to glfwGetPrimaryMonitor;
+                                     );
     void destroyWindowContext(WindowContext&);
     VkSurfaceKHR createWindowSurface(const VkInstance, const WindowContext&);
     VkExtent2D getWindowFramebufferSize(const WindowContext&); // bind glfwGetFrameBufferSize();
@@ -525,6 +531,7 @@ namespace VKI
     bool areRequiredFamilyQueueAvailable(const VkPhysicalDevice, const VkSurfaceKHR);
     VkDeviceQueueCreateInfo populateDeviceQueueCreateInfo(const QueueInfo& info);
 
+    std::set<uint32_t> listQueueSharingTheSwapchain(const std::vector<QueueFamily>&) noexcept;
     std::string queueFlagBitsToString(VkQueueFlags flags) noexcept;
 
     void queueSubmit(const VkQueue, const std::vector<SubmitInfo>&, const VkFence fence=VK_NULL_HANDLE);
@@ -623,7 +630,6 @@ namespace VKI
                               const VkRenderPass, 
                               const PipelineInfo&
                              );
-    //TODO Add a function createGraphicsContext(GraphicsContext&);
     //TODO Add a function std::vector<VkPipelines> createGraphicsPipelines(...); // and pack pipelines creation into a 
     //     single vkCreateGraphicsPipelines call. 
     VkPipelineLayout createPipelineLayout(const VkDevice, const PipelineInfo&);
@@ -641,7 +647,7 @@ namespace VKI
 
     void destroyPipelineLayout(const VkDevice, VkPipelineLayout&) noexcept;
     void destroyPipeline(const VkDevice, VkPipeline&) noexcept;
-    void destroyGraphicsContext(const VkDevice, GraphicsContext&) noexcept;
+    void destroyRenderPass(const VkDevice, RenderPass&) noexcept;
 
     /// Framebuffers.
     VkFramebuffer createFramebuffer(const VkDevice,
@@ -656,7 +662,7 @@ namespace VKI
     
     // Warnings : createBuffer won't allocate and bind memory to the buffer : call allocateBuffers.
     std::vector<Buffer> createBuffers(const VkDevice, const std::vector<BufferInfo>&);
-    void destroyBuffer(const VkDevice, Buffer&) noexcept;
+    void destroyBuffer(const VkDevice, Buffer&, const bool free_memory=true) noexcept;
     void destroyBuffer(const VkDevice, VkBuffer&) noexcept;
 
     /**@brief Create two Buffers : a 'Buffer' (device_local) and its 'Mirror' (host_visible).
@@ -666,6 +672,7 @@ namespace VKI
      * @param deviceFamilyIndexAccessing if specified, REPLACE the list of family index that will access the device Buffer.
      * @param hostFamilyIndexAccessing   if specified, REPLACE the list of family index that will access the host Buffer.
      * @param removeCoherenceOnDevice will remove (if exist) the HOST_COHERENT_BIT on the device Buffer.
+     * @param setupForHostToDeviceBond add VISIBLE to host and LOCAL to device (Allow device to device mirror).
      */
     BufferMirror createBufferMirror(const VkDevice,
                                     const BufferInfo&, 
@@ -673,7 +680,8 @@ namespace VKI
                                     const bool read =true, // from device.
                                     const std::optional<std::vector<uint32_t>> hostFamilyIndexAccessing=std::nullopt,
                                     const std::optional<std::vector<uint32_t>> deviceFamilyIndexAccessing=std::nullopt,
-                                    const bool removeCoherenceOnDevice=true
+                                    const bool removeCoherenceOnDevice  = true,
+                                    const bool setupForHostToDeviceBond = true
                                     );
 
     /**@brief Allocate memory to a buffer.
@@ -688,7 +696,7 @@ namespace VKI
                        );
     VkDeviceMemory allocateMemory(const VkDevice,
                                   const VkDeviceSize,
-                                  const uint32_t     memoryTypeIndex
+                                  const uint32_t memoryTypeIndex
                                  );
     void freeMemory(const VkDevice, VkDeviceMemory&) noexcept;
 
@@ -707,12 +715,19 @@ namespace VKI
     void unmapBuffer(const VkDevice, Buffer&);
     // void vkUnmapMemory(VkDevice,VkDeviceMemory);
 
-    // Note! writebuffer will map the buffer if not already mapped.
+    /**@brief Write arbitrary data to a HOST_VISIBLE buffer (otherwise take a look at recordPushBuffer).
+     * @note  writebuffer will map the buffer if not already mapped.
+     * @warning If the buffer isn't HOST_COHERENT you should use flushBuffer function afterwards.
+     * @except Raise std::logic_error if the buffer is not HOST_VISIBLE.
+     */
     void writeBuffer(const VkDevice,
                            Buffer&,
                      const void*  data,
                      const size_t maxSize=VK_WHOLE_SIZE // WHOLE_SIZE => buffer's size.
                     );
+    /**@brief Flush HOST_VISIBLE buffers.
+     * @note This function isn't required is the buffer is HOST_COHERENT.
+     */
     void flushBuffers(const VkDevice,
                       const std::vector<Buffer>&,
                       const bool flushRead=true,
@@ -721,13 +736,13 @@ namespace VKI
 
     // host to device.
     void recordPushBufferMirror(const BufferMirror&,
-                                const VkQueue&,      // transfer queue !
+                                const VkQueue&,      // Transfer queue !
                                 const VkCommandBuffer,
                                 std::vector<VkBufferCopy> regions={{0,0,VK_WHOLE_SIZE}} // whole_size == buffer.host.size;
                                );
     // device to host.
     void recordPullBufferMirror(const BufferMirror&,
-                                const VkQueue&,      // transfer queue !
+                                const VkQueue&,      // Transfer queue !
                                 const VkCommandBuffer,
                                 std::vector<VkBufferCopy> regions={{0,0,VK_WHOLE_SIZE}} // whole_size == buffer.device.size;
                                );
@@ -811,8 +826,8 @@ namespace VKI
   /*constexpr*/ bool operator==(const QueueInfo&,const QueueInfo&);
 
     /*@brief Fill a PhysicalDeviceMinimalRequirement struct with 0 and VK_FALSE so you don't have to.*/
-    /*constexpr*/ void getNullPhysicalDeviceMinimalRequirement(PhysicalDeviceMinimalRequirement&);
     // This function is 203 line of "xxx.xxx = 0;" so constexpr have been removed.
+    /*constexpr*/ void resetPhysicalDeviceMinimalRequirement(PhysicalDeviceMinimalRequirement&);
 
 }
 
