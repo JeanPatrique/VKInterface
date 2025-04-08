@@ -113,7 +113,7 @@ namespace VKI
 
     struct CommandInfo
     {
-        VkCommandPoolCreateFlags poolsFlags = 0; // Flags from which the commandPools.
+        VkCommandPoolCreateFlags poolsFlags = 0;
         uint32_t                 poolsCount = 1;
 
         std::vector<CommandBufferInfo> commandBufferInfos;
