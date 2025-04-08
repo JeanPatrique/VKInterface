@@ -255,12 +255,14 @@ int main(int argc, char** argv)
     VKI::unmapBuffer(vContext.device, *vertexBuffers.hostBuffer);
 
     // Transfering stagging vertex buffer to device vertex buffer.
-    VKI::recordPushBufferMirror(vertexBuffers, 
-                                vContext.queueFamilies[TRANSFER_QUEUE].queues[0],
-                                vContext.queueFamilies[TRANSFER_QUEUE].commands[0].PBuffers[0]
-                               );
+    auto cmdCopyBuffer = vContext.queueFamilies[TRANSFER_QUEUE].commands[0].PBuffers[0];          // Extract the command buffer.
+
+    VKI::cmdBeginRecordCommandBuffer(cmdCopyBuffer, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT); // Begin record.
+    VKI::recordPushBufferMirror(vertexBuffers, cmdCopyBuffer);                                    // Record copy.
+    VKI::cmdEndRecordCommandBuffer(cmdCopyBuffer);                                                // End record.
+
     VKI::SubmitInfo transferSubmitOrder{};
-    transferSubmitOrder.commandBuffers.push_back(vContext.queueFamilies[TRANSFER_QUEUE].commands[0].PBuffers[0]);
+    transferSubmitOrder.commandBuffers.push_back(cmdCopyBuffer);
 
     VKI::resetFence(vContext.device, vContext.fences[2]); // reset the fence before submit.
     VKI::queueSubmit(vContext.queueFamilies[TRANSFER_QUEUE].queues[0], {transferSubmitOrder}, vContext.fences[2]);

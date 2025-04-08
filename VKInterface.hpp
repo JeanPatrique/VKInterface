@@ -736,13 +736,11 @@ namespace VKI
 
     // host to device.
     void recordPushBufferMirror(const BufferMirror&,
-                                const VkQueue&,      // Transfer queue !
                                 const VkCommandBuffer,
                                 std::vector<VkBufferCopy> regions={{0,0,VK_WHOLE_SIZE}} // whole_size == buffer.host.size;
                                );
     // device to host.
     void recordPullBufferMirror(const BufferMirror&,
-                                const VkQueue&,      // Transfer queue !
                                 const VkCommandBuffer,
                                 std::vector<VkBufferCopy> regions={{0,0,VK_WHOLE_SIZE}} // whole_size == buffer.device.size;
                                );

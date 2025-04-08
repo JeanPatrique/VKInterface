@@ -4935,36 +4935,26 @@ namespace VKI
 
     // host to device.
     void recordPushBufferMirror(const BufferMirror&       bufferMirror,
-                                const VkQueue&            transferQueue,
                                 const VkCommandBuffer     cmdBuffer,
                                 std::vector<VkBufferCopy> regions
                                )
     {
-        cmdBeginRecordCommandBuffer(cmdBuffer, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-
         for (VkBufferCopy &region : regions)
             region.size = (region.size==VK_WHOLE_SIZE) ? bufferMirror.hostBuffer->info.size : region.size;
 
         vkCmdCopyBuffer(cmdBuffer, bufferMirror.hostBuffer->buffer, bufferMirror.deviceBuffer->buffer, regions.size(), regions.data());
-
-        cmdEndRecordCommandBuffer(cmdBuffer);
     }
 
     // device to host.
     void recordPullBufferMirror(const BufferMirror&       bufferMirror,
-                                const VkQueue&            transferQueue,
                                 const VkCommandBuffer     cmdBuffer,
                                 std::vector<VkBufferCopy> regions
                                )
     {
-        cmdBeginRecordCommandBuffer(cmdBuffer, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-
         for (VkBufferCopy &region : regions)
             region.size = (region.size==VK_WHOLE_SIZE) ? bufferMirror.deviceBuffer->info.size : region.size;
 
         vkCmdCopyBuffer(cmdBuffer, bufferMirror.deviceBuffer->buffer, bufferMirror.hostBuffer->buffer, regions.size(), regions.data());
-
-        cmdEndRecordCommandBuffer(cmdBuffer);
     }
     
 
