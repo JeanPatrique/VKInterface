@@ -325,7 +325,7 @@ namespace VKI
     struct BufferInfo
     {
         VkDeviceSize          size;
-        VkDeviceSize          offset= 0;
+        VkDeviceSize          offset= 0; // Offset in a memory chunk.
         VkBufferUsageFlags    usage = 0;
         VkBufferCreateFlags   flags = 0;
     #ifdef VK_VERSION_1_4
@@ -356,6 +356,13 @@ namespace VKI
         std::shared_ptr<Buffer> deviceBuffer,
                                 hostBuffer; // Both buffer must be identical (except for memoryProperties).
     };
+
+    /* // TODO
+    struct MemoryStrip // Use this primitive to bundle a bunch of buffers to the same memory location, making your data more cache friendly.
+    {
+        VkMemoryPropertyFlags memoryProperties = 0;//VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+    };
+    */
 
     /**@brief OPTIONAL struct that bundle all resources that your application could/would need.*/
     struct VulkanContext

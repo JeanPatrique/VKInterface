@@ -62,7 +62,8 @@ if (${VKI_BUILD_EXEMPLE_EXECUTABLES})
     endfunction()
 
     include_directories("${CMAKE_CURRENT_SOURCE_DIR}/exemples")
-    add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/exemples/simple_triangle")
+    add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/exemples/simple_triangle") # The first triangle is precious <3
+    add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/exemples/compute_texture")
     #add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/exemples/dummyEngine") # It took so long :/, I'd rather make a true one straight.
     #add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/exemples/tests") # TODO uncomment this !
     

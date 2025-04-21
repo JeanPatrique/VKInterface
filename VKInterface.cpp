@@ -4958,6 +4958,7 @@ namespace VKI
     }
     
 
+    // This function should be deleted !
     void cmdDraw(VkCommandBuffer cmdBuffer, uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertexIndex, uint32_t firstInstanceIndex)
     {
         vkCmdDraw(cmdBuffer, vertexCount, instanceCount, firstVertexIndex, firstInstanceIndex);
