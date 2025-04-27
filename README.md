@@ -1,5 +1,5 @@
 Disclaimer :
-    This project is my vulkan-tutorial code base i.e. I don't know much about the API nor how to do rendering properly.
+    This project is my vulkan-tutorial codebase i.e. I don't know much about the API nor how to do rendering properly.
     Beware of obvious mistakes or odd decisions.
 
 # VKInterface 
@@ -11,8 +11,6 @@ This mean that this lib is intended to be used as an optional layer on top of th
 ## Compilation
 
 ### Linux :
-#### Dependencies :
-    glfw, vulkan, dl, pthread, X11, Xxf86vm, Xrandr, Xi.
 ##### Debian :
     sudo apt install libvulkan-dev vulkan-validationlayers-dev spirv-tools
 ##### Arch :
