@@ -33,7 +33,7 @@ namespace VKI
     std::function<void(const char*)> logValidationLayerWarningCB = logInfoCB;
     std::function<void(const char*)> logValidationLayerErrorCB   = [](const char* msg) { std::cerr<<"Validation Layers : "<<msg<<std::endl; };
 
-    PhysicalDeviceMinimalRequirement physicalDeviceMinimalRequirement;
+    PhysicalDeviceMinimalRequirement physicalDeviceMinimalRequirement{};
 
     // Default make the program stop.
     PhysicalDeviceSelectorCallback physicalDeviceSelectorCallback = 
@@ -1194,9 +1194,8 @@ namespace VKI
         //    1244*8 = 9952 Bits;
         //   2^9952 ~= 70x10^2995;
         // Which doesn't mean anything ...
-        // Even doubles can't store that monster
-        // (I almost sure the score could be used as a UUID).
-        // The solution that i come up with is to use the GMP lib which allow 
+        // Even doubles can't store this monster
+        // The solution that i've came up with is to use the GMP lib which allow 
         // me to manipulate insanely large integers.
         //
         // While that is not the probleme here (the probleme is my score 
@@ -1213,14 +1212,14 @@ namespace VKI
         VkPhysicalDeviceProperties properties;
         vkGetPhysicalDeviceProperties(device, &properties);
 
-        //score += properties.apiVersion;   // versions doesn't represent a performance indicator.
-        //score += properties.driverVersion;// versions doesn't represent a performance indicator.
+        score += properties.apiVersion;
+        score += properties.driverVersion;
         
         //properties.vendorID isn't relevant here.
         //properties.deviceID isn't relevant here.
         //properties.deviceType is too important -> it's added at the end.
         //properties.deviceName isn't relevant here.
-        //properties.pipelineCacheUUID isn't relevant here (i think ..).
+        //properties.pipelineCacheUUID isn't relevant here.
 
         // Add each limit to the score 
         // (weights can be added if a limit is more important than others).
@@ -1368,7 +1367,7 @@ namespace VKI
 		score *= 1+(( features.imageCubeArray )						     ?        1 : 0 );
 		score *= 1+(( features.independentBlend )					     ?        1 : 0 );
 		score *= 1+(( features.geometryShader )						     ?   100000 : 0 );
-		score *= 1+(( features.tessellationShader )					     ?       10 : 0 );
+		score *= 1+(( features.tessellationShader )					     ?     1000 : 0 );
 		score *= 1+(( features.sampleRateShading )					     ?        1 : 0 );
 		score *= 1+(( features.dualSrcBlend )						     ?        1 : 0 );
 		score *= 1+(( features.logicOp )				    		     ?    10000 : 0 );
@@ -1378,7 +1377,7 @@ namespace VKI
 		score *= 1+(( features.depthBiasClamp )				   		     ?        1 : 0 );
 		score *= 1+(( features.fillModeNonSolid )					     ?        1 : 0 );
 		score *= 1+(( features.depthBounds )						     ?        1 : 0 );
-		score *= 1+(( features.wideLines )				    		     ?        1 : 0 );
+		score *= 1+(( features.wideLines )				    		     ?    10000 : 0 );
 		score *= 1+(( features.largePoints )			   			     ?        1 : 0 );
 		score *= 1+(( features.alphaToOne )				    		     ?        1 : 0 );
 		score *= 1+(( features.multiViewport )						     ?        1 : 0 );
@@ -1986,7 +1985,7 @@ namespace VKI
     {
         std::stringstream ss;
 
-        ss<<"ULTRA DEBUG :\n";
+        ss<<"FIND_QUEUE_FAMILY_INDICES DEBUG :\n";
         ss<<"\t\t\tThere is "<<std::dec<<data.size()<<" required queue families\n";
 
         for (const std::pair<QueueInfo, std::list<std::pair<QueueInfo, uint32_t>>>& rqd_available : data)
@@ -2013,7 +2012,7 @@ namespace VKI
     // TODO check this error from the validations layers :
     // Validation : Validation Error: [ VUID-VkDeviceCreateInfo-queueFamilyIndex-02802 ] Object 0: handle = 0x5c869eca7080, type = VK_OBJECT_TYPE_PHYSICAL_DEVICE; | MessageID = 0x29498778 | vkCreateDevice(): pCreateInfo->pQueueCreateInfos[2].queueFamilyIndex (1) is not unique and was also used in pCreateInfo->pQueueCreateInfos[1].
     // The Vulkan spec states: The queueFamilyIndex member of each element of pQueueCreateInfos must be unique within pQueueCreateInfos , except that two members can share the same queueFamilyIndex if one describes protected-capable queues and one describes queues that are not protected-capable (https://docs.vulkan.org/spec/latest/chapters/devsandqueues.html#VUID-VkDeviceCreateInfo-queueFamilyIndex-02802)
-    // |-> TODO remove family from suitableFamilies if already assigned (-> let user deal with queue collision).
+    // |-> TODO remove family from suitableFamilies if already assigned (-> let user deal with queues 'collisions').
     std::vector<QueueInfo> findQueueFamilyIndices(const VkPhysicalDevice        device, 
                                                   const std::vector<QueueInfo>& queueTemplate,
                                                   const VkSurfaceKHR            surface,
@@ -2166,11 +2165,11 @@ namespace VKI
         {
             std::stringstream ss;
             ss<<"findQueueFamilyIndices final queue family layout :\n"
-                "\t\t\t|-> "<<requiredQueues.size()<<" queues families are used.\n";
+                "\t\t\t|-> "<<requiredQueues.size()<<" queues families are used.";
             size_t queueIndex=0;
             for (const QueueInfo& info : requiredQueues)
             {
-                ss<<"\t\t\t|-> Queue index="<<queueIndex<<" is assigned to family index="<<info.familyIndex<<"\n";
+                ss<<"\n\t\t\t|-> Queue index="<<queueIndex<<" is assigned to family index="<<info.familyIndex;
                 queueIndex++;
             }
 
@@ -3226,7 +3225,6 @@ namespace VKI
         createInfo.pNext                    = nullptr;
         createInfo.flags                    = 0;
         createInfo.surface                  = surface;
-        //createInfo.minImageCount          = swapchainInfo.capabilities.maxImageCount;
         createInfo.minImageCount            = requestedImageCount;
         createInfo.imageFormat              = swapchainInfo.formats.at(0).format;
         createInfo.imageColorSpace          = swapchainInfo.formats.at(0).colorSpace;
@@ -3558,8 +3556,8 @@ namespace VKI
             (gPipelineInfo.fragmentShader == VK_NULL_HANDLE)
            )
         {
-            logErrorCB("createPipeline failed to create a pipeline an shader (vert or frag) is missing.");
-            throw std::invalid_argument("VKI::createPipeline failed to create a pipeline an shader (vert or frag) is missing.");
+            logErrorCB("createGraphicsPipeline failed to create a pipeline an shader (vert or frag) is missing.");
+            throw std::invalid_argument("VKI::createGraphicsPipeline failed to create a pipeline an shader (vert or frag) is missing.");
         }
 
         VkPipelineShaderStageCreateInfo vertexShaderStageCreateInfo{};
@@ -4152,6 +4150,17 @@ namespace VKI
                 }
             }
             buffers.push_back(buffer);
+
+            #ifdef VKI_ENABLE_DEBUG_LOGS  
+            {
+                std::stringstream ss;
+                ss<<"Create buffer at "<<std::hex<<reinterpret_cast<uint64_t>(buffer.buffer)<<" are used by the family : ";
+                for (uint32_t family : buffer.info.queueFamilyIndicesSharingTheBuffer)
+                    ss<<family<<", ";
+                ss<<";";
+                logInfoCB(ss.str().c_str());
+            }
+            #endif
         }
 
         std::stringstream ss;
@@ -4167,8 +4176,8 @@ namespace VKI
                                     const bool          read,
                                     const std::optional<std::vector<uint32_t>> hostFamilyIndexAccessing,
                                     const std::optional<std::vector<uint32_t>> deviceFamilyIndexAccessing,
-                                    const bool removeCoherenceOnDevice,
-                                    const bool setupForHostToDeviceBond
+                                    const bool setupForHostToDeviceBond,
+                                    const bool removeCoherenceOnDevice
                                     )
     {
         BufferInfo infoH=info,
@@ -4195,6 +4204,14 @@ namespace VKI
             infoH.usage |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
             infoD.usage |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
         }
+
+        // update the sharing family queues
+
+        if (hostFamilyIndexAccessing)
+            infoH.queueFamilyIndicesSharingTheBuffer = hostFamilyIndexAccessing.value();
+
+        if (deviceFamilyIndexAccessing)
+            infoD.queueFamilyIndicesSharingTheBuffer = deviceFamilyIndexAccessing.value();
 
         const std::vector<BufferInfo> bufferInfos = {infoH, infoD};
         const std::vector<Buffer> bufferList = createBuffers(device, bufferInfos);
@@ -4232,6 +4249,7 @@ namespace VKI
     bool allocateBuffer(const VkDevice                          device, 
                               Buffer&                           buffer, 
                         const VkPhysicalDeviceMemoryProperties& phyMemoriesProperties, 
+                        const uint32_t                          targetMemoryIndex,
                         const bool                              bindMemoryToBuffer,
                         const bool                              logInfo
                        )
@@ -4241,57 +4259,26 @@ namespace VKI
 
         if (logInfo)
         {
-            std::stringstream ss;
-            ss<<"allocateBuffer called on buffer at ";
-            ss<<std::hex<<reinterpret_cast<uint64_t>(&buffer);
-            ss<<"\n\t\t with a size       (Bytes) : "<<std::dec<<static_cast<uint64_t>(bufferRequirements.size);
-            ss<<"\n\t\t with an alignment (Bytes) : "<<std::dec<<static_cast<uint64_t>(bufferRequirements.alignment);
-            ss<<"\n\t\t and memory type bits      : "<<std::hex<<static_cast<uint64_t>(bufferRequirements.memoryTypeBits);
-
-            ss<<"\n\t\t\t |-> ";
-            if (bufferRequirements.memoryTypeBits == 0)
-                ss<<"None the property is null";
-            if (bufferRequirements.memoryTypeBits & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
-                ss<<"DEVICE_LOCAL, ";
-            if (bufferRequirements.memoryTypeBits & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
-                ss<<"HOST_VISIBLE, ";
-            if (bufferRequirements.memoryTypeBits & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
-                ss<<"HOST_COHERENT, ";
-            if (bufferRequirements.memoryTypeBits & VK_MEMORY_PROPERTY_HOST_CACHED_BIT)
-                ss<<"HOST_CACHED, ";
-            if (bufferRequirements.memoryTypeBits & VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT)
-                ss<<"LAZILY_ALLOCATED, ";
-            if (bufferRequirements.memoryTypeBits & VK_MEMORY_PROPERTY_PROTECTED_BIT)
-                ss<<"PROTECTED, ";
-        #ifdef VK_AMD_device_coherent_memory
-            if (bufferRequirements.memoryTypeBits & VK_MEMORY_PROPERTY_DEVICE_COHERENT_BIT_AMD)
-                ss<<"AMD_DEVICE_COHERENT, ";
-            if (bufferRequirements.memoryTypeBits & VK_MEMORY_PROPERTY_DEVICE_UNCACHED_BIT_AMD)
-                ss<<"AMD_DEVICE_UNCACHED, ";
-        #endif
-        #ifdef VK_NV_external_memory_rdma
-            if (bufferRequirements.memoryTypeBits & VK_MEMORY_PROPERTY_RDMA_CAPABLE_BIT_NV)
-                ss<<"NVIDIA_RDMA_CAPABLE, ";
-        #endif
-            
-            logInfoCB(ss.str().c_str());
+            logInfoCB("allocateBuffer called, here is the requirements for the buffer :");
+            logMemoryRequirements(bufferRequirements, static_cast<void*>(buffer.buffer));
         }
 
         // Select the right heap to assign the buffer to.
 
-        const uint32_t bufferTypesFilter = bufferRequirements.memoryTypeBits;
-        uint32_t memoryTypeIndex = -1;
-        for (uint32_t i(0) ; i<phyMemoriesProperties.memoryTypeCount ; i++)
+        const std::set<uint32_t> memoryTypeIndices = getMemoryIndexFromMemoryRequirement(bufferRequirements,
+                                                                                         buffer.info.memoryProperties,
+                                                                                         phyMemoriesProperties
+                                                                                        );
+        uint32_t memoryTypeIndex;
+        if (memoryTypeIndices.count(targetMemoryIndex) != 0)
         {
-            if ((bufferTypesFilter & (1<<i)) &&
-                (phyMemoriesProperties.memoryTypes[i].propertyFlags & buffer.info.memoryProperties)
-               )
-            {
-                memoryTypeIndex=i;
-                break;
-            }
+            memoryTypeIndex = targetMemoryIndex;
         }
-        if (memoryTypeIndex == -1)
+        else if (not memoryTypeIndices.empty())
+        {
+            memoryTypeIndex = *memoryTypeIndices.begin();
+        }
+        else
         {
             logErrorCB("allocateBuffer failed to find a suitable memory to allocate from.");
             //throw std::runtime_error("VKI::allocateBuffer failed to find a suitable memory to allocate from.");
@@ -4302,6 +4289,7 @@ namespace VKI
         {
             const uint32_t heapIndex = phyMemoriesProperties.memoryTypes[memoryTypeIndex].heapIndex;
             std::stringstream ss;
+            ss<<"The buffer could be allocated from "<<memoryTypeIndices.size()<<" heaps, but ";
             ss<<"allocateBuffer will allocate memory from heap id=";
             ss<<std::dec<<heapIndex;
             logInfoCB(ss.str().c_str());
@@ -4318,6 +4306,39 @@ namespace VKI
         }
 
         return true;
+    }
+
+    bool allocateBuffers(const VkDevice                          device,
+                         std::vector<Buffer*>                    buffers,
+                         const VkPhysicalDeviceMemoryProperties& phyMemoryProperties, 
+                         const VkDeviceSize                      customAlignment,    // -1 let VKI figure it out.
+                         const uint32_t                          targetMemoryIndex,  // -1 => take first founded suitable memory index.
+                         const bool                              bindMemoryToBuffer, // call bindBufferMemory(...);
+                         const bool                              logInfo
+                       )
+    {
+        // Get each buffer its memory requirement.
+        return false;
+    }
+
+    std::set<uint32_t> getMemoryIndexFromMemoryRequirement(const VkMemoryRequirements  memoryRequirements, // Size,Alignment
+                                                           const VkMemoryPropertyFlags memoryProperties,  // DEVICE_LOCAL, ...
+                                                           const VkPhysicalDeviceMemoryProperties& phyMemoriesProperties
+                                                          )
+    {   // see "https://registry.khronos.org/vulkan/specs/latest/html/vkspec.html#memory-device-properties" exemple 
+        std::set<uint32_t> memoryTypeIndices;
+
+        const uint32_t typesFilter = memoryRequirements.memoryTypeBits;
+        for (uint32_t i(0) ; i<phyMemoriesProperties.memoryTypeCount ; i++)
+        {
+            if ((typesFilter & (1<<i)) &&
+                (memoryProperties == (phyMemoriesProperties.memoryTypes[i].propertyFlags & memoryProperties))
+               )
+            {
+                memoryTypeIndices.insert(i);
+            }
+        }
+        return memoryTypeIndices;
     }
 
     VkDeviceMemory allocateMemory(const VkDevice      device,
@@ -4492,6 +4513,44 @@ namespace VKI
 
             index++;
         }
+        logInfoCB(ss.str().c_str());
+    }
+
+    void logMemoryRequirements(const VkMemoryRequirements requirements, const void* addr)
+    {
+        std::stringstream ss;
+        ss<<"logMemoryRequirements on object at ";
+        ss<<std::hex<<reinterpret_cast<uint64_t>(addr);
+        ss<<"\n\t\t with a size       (Bytes) : "<<std::dec<<static_cast<uint64_t>(requirements.size);
+        ss<<"\n\t\t with an alignment (Bytes) : "<<std::dec<<static_cast<uint64_t>(requirements.alignment);
+        ss<<"\n\t\t and memory type bits      : "<<std::hex<<static_cast<uint64_t>(requirements.memoryTypeBits);
+
+        ss<<"\n\t\t\t |-> ";
+        if (requirements.memoryTypeBits == 0)
+            ss<<"None the property is null";
+        if (requirements.memoryTypeBits & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
+            ss<<"DEVICE_LOCAL, ";
+        if (requirements.memoryTypeBits & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
+            ss<<"HOST_VISIBLE, ";
+        if (requirements.memoryTypeBits & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
+            ss<<"HOST_COHERENT, ";
+        if (requirements.memoryTypeBits & VK_MEMORY_PROPERTY_HOST_CACHED_BIT)
+            ss<<"HOST_CACHED, ";
+        if (requirements.memoryTypeBits & VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT)
+            ss<<"LAZILY_ALLOCATED, ";
+        if (requirements.memoryTypeBits & VK_MEMORY_PROPERTY_PROTECTED_BIT)
+            ss<<"PROTECTED, ";
+    #ifdef VK_AMD_device_coherent_memory
+        if (requirements.memoryTypeBits & VK_MEMORY_PROPERTY_DEVICE_COHERENT_BIT_AMD)
+            ss<<"AMD_DEVICE_COHERENT, ";
+        if (requirements.memoryTypeBits & VK_MEMORY_PROPERTY_DEVICE_UNCACHED_BIT_AMD)
+            ss<<"AMD_DEVICE_UNCACHED, ";
+    #endif
+    #ifdef VK_NV_external_memory_rdma
+        if (requirements.memoryTypeBits & VK_MEMORY_PROPERTY_RDMA_CAPABLE_BIT_NV)
+            ss<<"NVIDIA_RDMA_CAPABLE, ";
+    #endif
+        
         logInfoCB(ss.str().c_str());
     }
 

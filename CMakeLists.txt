@@ -29,6 +29,10 @@ target_include_directories(VKInterface INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}")
 
 add_compile_options( -Wall -Wextra -Wpedantic )
 
+# Options :
+option(VKI_ENABLE_DEBUG_LOGS            "Enable some extra log calls"   OFF)
+option(VKI_BUILD_EXEMPLE_EXECUTABLES    "Build exemple executables."    OFF)
+
 # Here is the linking with the GMP static lib.
 add_library(GMP STATIC IMPORTED) # C lib required for the GMP C++ lib.
 set_target_properties(GMP PROPERTIES IMPORTED_LOCATION "${CMAKE_CURRENT_SOURCE_DIR}/libgmp/libgmp.a")
@@ -44,8 +48,13 @@ if (${VKI_BUILD_DOCUMENTATION})
     add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/docs/")
 endif()
 
-# Building exemples :
+# Options :
+if (${VKI_ENABLE_DEBUG_LOGS})
+    target_compile_definitions(VKInterface PUBLIC VKI_ENABLE_DEBUG_LOGS)
+    message("-- Adding VKI_ENABLE_DEBUG_LOGS macro.")
+endif()
 
+# Building exemples :
 if (${VKI_BUILD_EXEMPLE_EXECUTABLES})
 
     message("-- Building exemples.")

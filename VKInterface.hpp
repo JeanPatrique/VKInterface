@@ -325,9 +325,10 @@ namespace VKI
     struct BufferInfo
     {
         VkDeviceSize          size;
-        VkDeviceSize          offset= 0; // Offset in a memory chunk.
-        VkBufferUsageFlags    usage = 0;
-        VkBufferCreateFlags   flags = 0;
+        VkDeviceSize          offset  = 0; // Offset from the memory origin.
+        VkDeviceSize          alignment = -1; // Alignment of the memory region.
+        VkBufferUsageFlags    usage   = 0;
+        VkBufferCreateFlags   flags   = 0;
     #ifdef VK_VERSION_1_4
         VkBufferUsageFlags2   usage2    = 0;
         bool                  useUsage2 = false;
@@ -344,11 +345,11 @@ namespace VKI
 
     struct Buffer
     {
-        VkBuffer            buffer = VK_NULL_HANDLE;
-        VkDeviceMemory      memory = VK_NULL_HANDLE;
+        VkBuffer       buffer = VK_NULL_HANDLE;
+        VkDeviceMemory memory = VK_NULL_HANDLE;
 
-        void*               mappedAddr = nullptr; // Only if VISIBLE !
-        const BufferInfo    info;
+        void*          mappedAddr = nullptr; // Only if info.memoryProperties contain HOST_VISIBLE.
+        BufferInfo     info;
     };
 
     struct BufferMirror // Link a Buffer (device_local) and a 'mirror' (host_visible).
@@ -356,13 +357,6 @@ namespace VKI
         std::shared_ptr<Buffer> deviceBuffer,
                                 hostBuffer; // Both buffer must be identical (except for memoryProperties).
     };
-
-    /* // TODO
-    struct MemoryStrip // Use this primitive to bundle a bunch of buffers to the same memory location, making your data more cache friendly.
-    {
-        VkMemoryPropertyFlags memoryProperties = 0;//VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
-    };
-    */
 
     /**@brief OPTIONAL struct that bundle all resources that your application could/would need.*/
     struct VulkanContext
@@ -402,7 +396,7 @@ namespace VKI
        #endif
     };
 
-    /**@brief Lists the GPU minimal requirement.
+    /**@brief Lists the GPU minimal requirements.
      */
     struct PhysicalDeviceMinimalRequirement
     { 
@@ -424,7 +418,7 @@ namespace VKI
         std::vector<const char*> deviceExtensions;
     };
 
-    /**@brief Save GPU preference when choosing physical device. 
+    /**@brief Save GPU preference when choosing a physical device. 
      * @param letMeChooseTheDevice force the call to PhysicalDeviceSelectorCallback.*/
     void registerGpuRequirement(const PhysicalDeviceMinimalRequirement&, bool letMeChooseTheDevice=false);
     /**@brief Save a function to call if the physical device automatic selection fail. */
@@ -667,11 +661,13 @@ namespace VKI
 
     /// Buffers.
     
-    // Warnings : createBuffer won't allocate and bind memory to the buffer : call allocateBuffers.
+    // Warnings : createBuffer won't allocate nor bind memory to the buffer : call allocateBuffers (and if needed bindBufferMemory).
     std::vector<Buffer> createBuffers(const VkDevice, const std::vector<BufferInfo>&);
     void destroyBuffer(const VkDevice, Buffer&, const bool free_memory=true) noexcept;
     void destroyBuffer(const VkDevice, VkBuffer&) noexcept;
 
+    // TODO review this function since it's not compatible with allocateBuffers
+    // |-> May update it to take a 'device' buffer and create a mirror to the host side.
     /**@brief Create two Buffers : a 'Buffer' (device_local) and its 'Mirror' (host_visible).
      * The two Buffers are identical except that one is created with DEVICE_LOCAL and the other one with HOST_VISIBLE.
      * @param write, add TRANSFER_SRC to host and TRANSFER_DET to device.
@@ -679,7 +675,8 @@ namespace VKI
      * @param deviceFamilyIndexAccessing if specified, REPLACE the list of family index that will access the device Buffer.
      * @param hostFamilyIndexAccessing   if specified, REPLACE the list of family index that will access the host Buffer.
      * @param removeCoherenceOnDevice will remove (if exist) the HOST_COHERENT_BIT on the device Buffer.
-     * @param setupForHostToDeviceBond add VISIBLE to host and LOCAL to device (Allow device to device mirror).
+     * @param setupForHostToDeviceBond add VISIBLE to host and LOCAL to device (If false, it allow device to device mirror).
+     * @note  Create the host buffer and then the device buffer (Good to know if you need to identify the buffer in the logs).
      */
     BufferMirror createBufferMirror(const VkDevice,
                                     const BufferInfo&, 
@@ -687,20 +684,48 @@ namespace VKI
                                     const bool read =true, // from device.
                                     const std::optional<std::vector<uint32_t>> hostFamilyIndexAccessing=std::nullopt,
                                     const std::optional<std::vector<uint32_t>> deviceFamilyIndexAccessing=std::nullopt,
-                                    const bool removeCoherenceOnDevice  = true,
-                                    const bool setupForHostToDeviceBond = true
+                                    const bool setupForHostToDeviceBond = true,
+                                    const bool removeCoherenceOnDevice  = true
                                     );
 
+    //TODO create a new function : 
+    //BufferMirror createBufferMirrorFromDeviceBuffer(const VkDevice,
+    //                                                const Buffer&  deviceBuffer,
+    //                                                const bool write = true,
+    //                                                const bool read  = true,
+    //                                                const std::optional<std::vector<uint32_t>>
+    //                                                ...
+
     /**@brief Allocate memory to a buffer.
-     * @return true on success, throw a runtime_error if out of memory and false if no suitable heap is found.
+     * @return true on success.
+     * @return false if no suitable heap is found or if the targetMemoryIndex doesn't support the buffer.
+     * @throw  runtime_error if out of memory.
      * @warning Doesn't support multi-instance memory pages.
+     * @note For better performance (by incresing cache-frendly data) take a look at allocateBuffers(...);
      */
     bool allocateBuffer(const VkDevice, 
                               Buffer&, 
                         const VkPhysicalDeviceMemoryProperties&, 
-                        const bool bindMemoryToBuffer=true, // call bindBufferMemory(...);
-                        const bool logInfo=true
+                        const uint32_t  targetMemoryIndex = -1,  // -1 => take first founded suitable memory index.
+                        const bool      bindMemoryToBuffer=true, // call bindBufferMemory(...);
+                        const bool      logInfo=true
                        );
+    /**@brief Allocate a bunch of buffers to a single memory allocation.
+     */
+    bool allocateBuffers(const VkDevice,
+                         std::vector<Buffer*>,
+                         const VkPhysicalDeviceMemoryProperties&, 
+                         const VkDeviceSize customAlignment= -1,  // -1 let VKI figure it out.
+                         const uint32_t  targetMemoryIndex = -1,  // -1 => take first founded suitable memory index.
+                         const bool      bindMemoryToBuffer=true, // call bindBufferMemory(...);
+                         const bool      logInfo=true
+                       );
+    /**@brief Find a set of memory index that are suitable for the memory requirements and properties.
+     */
+    std::set<uint32_t> getMemoryIndexFromMemoryRequirement(const VkMemoryRequirements  ,// Size, alignment, ...
+                                                           const VkMemoryPropertyFlags ,// DEVICE_LOCAL / HOST_VISIBLE / ...
+                                                           const VkPhysicalDeviceMemoryProperties& // Device's memories.
+                                                          );
     VkDeviceMemory allocateMemory(const VkDevice,
                                   const VkDeviceSize,
                                   const uint32_t memoryTypeIndex
@@ -708,10 +733,13 @@ namespace VKI
     void freeMemory(const VkDevice, VkDeviceMemory&) noexcept;
 
     void bindBufferMemory(const VkDevice, VkBuffer, VkDeviceMemory, const VkDeviceSize memoryOffset);
+    //TODO
+  //void bindBufferMemory(const VkDevice, const std::vector<const Buffer*>);
 
     size_t getGlobalMemoryAllocationCount() noexcept; // Return how many allocations simultaneously exist.
     void logMemoryHeapInfo(const VkPhysicalDeviceMemoryProperties&, const uint32_t heapIndex); // log infos about a heap.
     void logMemoryInfo(const VkPhysicalDeviceMemoryProperties&); // log infos about all heaps.
+    void logMemoryRequirements(const VkMemoryRequirements, const void* addr);
 
     void* mapMemory(const VkDevice           device,
                     const VkDeviceMemory     memory,

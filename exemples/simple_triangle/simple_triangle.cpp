@@ -13,7 +13,6 @@
 #include "utilities.hpp" // VKI isn't meant to be stand-alone.
 
 #define HEAVY_DEBUG false     // flush every log entries (python speed but back-trace segfault).
-#define VKI_ENABLE_DEBUG_LOGS // extra logs to find some nasty bugs.
 
 //Helper functions.
 void drawCall(VKI::VulkanContext &vContext, VKI::WindowContext &wContext);

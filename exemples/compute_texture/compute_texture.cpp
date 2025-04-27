@@ -2,7 +2,9 @@
 /* This file showcase a sand falling simutation run throught vulkan compute shaders.*/
 
 /* Step :
- *   - Draw a quad 
+ *     /
+ *   \/   Draw a quad 
+ *   - Add a unifom buffer.
  *   - Add 2D perspective and camera + size.
  *   - Draw many quad.
  *   - Discover the secondary buffer mystery.
@@ -19,12 +21,11 @@
 #include <chrono>
 #include <thread>
 
-#define HEAVY_DEBUG false     // flush every log entries (python speed but back-trace segfault).
-#define VKI_ENABLE_DEBUG_LOGS // extra logs to find some nasty bugs.
-
 #include "VKInterface.hpp"
-#include "logger.hpp"    // A custom logger for this exemple.
-#include "utilities.hpp" // VKI isn't meant to be stand-alone.
+
+#define HEAVY_DEBUG false // flush every log entries (python speed but back-trace segfault).
+#include "logger.hpp"     // A custom logger for this exemple.
+#include "utilities.hpp"  // VKI isn't meant to be stand-alone.
 
 //Helper functions.
 void drawCall(VKI::VulkanContext &vContext, VKI::WindowContext &wContext, std::vector<VkBuffer> vertexBuffers, VkBuffer indexBuffer);
@@ -250,18 +251,27 @@ int main(int argc, char** argv)
     mainScope.logv("Logging info about the available memory.");
     VKI::logMemoryInfo(vContext.physicalDeviceMemoryProperties);
 
+    mainScope.logv("Creating the vertex buffer.");
     // Vertex buffer :
     VKI::BufferInfo vertexBufferInfo{};
     vertexBufferInfo.size  = sizeof(Vertex) * quadGeometry.size();
     vertexBufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
     vertexBufferInfo.memoryProperties = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-    vertexBufferInfo.queueFamilyIndicesSharingTheBuffer = {vContext.queueFamilies[GRAPHICS_QUEUE].info.familyIndex,
-                                                           vContext.queueFamilies[TRANSFER_QUEUE].info.familyIndex};
+    // The queue family indices are set separatly in the createBufferMirror function.
+    //vertexBufferInfo.queueFamilyIndicesSharingTheBuffer = {vContext.queueFamilies[GRAPHICS_QUEUE].info.familyIndex,
+    //                                                       vContext.queueFamilies[TRANSFER_QUEUE].info.familyIndex};
 
     VKI::BufferMirror vertexBuffers = VKI::createBufferMirror(vContext.device, 
                                                               vertexBufferInfo,
                                                               true, // Allow write from host to device.
-                                                              false // Don't allow read from device to host.
+                                                              false,// Don't allow read from device to host.
+               /*Host buffer queue family accessing it.*/     {{
+                                                               vContext.queueFamilies[TRANSFER_QUEUE].info.familyIndex
+                                                              }},
+               /*Device buffer queue families sharing it.*/   {{
+                                                               vContext.queueFamilies[TRANSFER_QUEUE].info.familyIndex,
+                                                               vContext.queueFamilies[GRAPHICS_QUEUE].info.familyIndex
+                                                              }}
                                                              );
 
     for (auto& buffer : std::vector<std::shared_ptr<VKI::Buffer>>{vertexBuffers.hostBuffer, vertexBuffers.deviceBuffer})
@@ -303,6 +313,7 @@ int main(int argc, char** argv)
     }
 
     // Indices Buffer :
+    mainScope.logv("Creating the index buffer.");
     VKI::BufferInfo indicesBufferInfo{};
     indicesBufferInfo.size  = sizeof(uint16_t) * quadIndices.size();
     indicesBufferInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
