@@ -15,11 +15,6 @@ namespace VKI
 {
     // Callbacks and global variables:
 
-    // TODO : replace every 'lastApiError = ', by 'VkResult apiError = '.
-    std::atomic<VkResult> lastApiError; 
-    // This is an artefact for a previous design, and it need to be removed (potential race condition).
-    // Any other function running in another thread will override this.
-
     std::atomic<size_t> vkiGlobalMemoryAllocationCount = 0;
 
     std::function<void(const char*)> logVerboseCB    = []([[maybe_unused]]const char* msg){};
@@ -232,18 +227,11 @@ namespace VKI
             {
                 logFatalErrorCB("init -> glfwVulkanSupported");
             }
-
             glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API); // Disable OpenGL api.
-
-            lastApiError = VkResult::VK_SUCCESS;
             logInfoCB("VKI::init initialized successfully.");
-
-
         }
         else
-        {
             logWarningCB("VKI::init have been called more than once (that may be normal if a object must be sure that VKI::init have been called).");
-        }
     }
 
     // Terminate the VKInterface.
@@ -410,9 +398,9 @@ namespace VKI
 
 
         VkInstance instance;
-        lastApiError = vkCreateInstance(&createInstanceInfo, nullptr, &instance);
+        VkResult error = vkCreateInstance(&createInstanceInfo, nullptr, &instance);
         
-        switch (lastApiError)
+        switch (error)
         {
             case (VkResult::VK_SUCCESS):
             {
@@ -492,18 +480,13 @@ namespace VKI
         createInfo.pUserData  = nullptr;
         createInfo.pNext = nullptr;
 
-        lastApiError = createInstanceDebugUtilsMessengerEXT(
-                            instance,
-                            &createInfo,
-                            nullptr,
-                            &debugMessenger
-                            );
+        VkResult error = createInstanceDebugUtilsMessengerEXT(instance, &createInfo, nullptr, &debugMessenger);
 
-        if (lastApiError == VkResult::VK_SUCCESS)
+        if (error == VkResult::VK_SUCCESS)
         {
             logInfoCB("setupInstanceDebugCallback successfully setup the debug callback for the validation layers.");
         }
-        else if (lastApiError == VkResult::VK_ERROR_EXTENSION_NOT_PRESENT)
+        else if (error == VkResult::VK_ERROR_EXTENSION_NOT_PRESENT)
         {
             logErrorCB("setupInstanceDebugCallback failed to manually load the vkCreateDebugUtilsDebugUtilsMessengerEXT.");
             throw std::runtime_error(""); // will get silently catch so no .what is needed. 
@@ -806,8 +789,8 @@ namespace VKI
     {
         uint32_t extCount=0;
 
-        lastApiError = vkEnumerateInstanceExtensionProperties(pLayerName, &extCount, nullptr);
-        if (lastApiError != VkResult::VK_SUCCESS)
+        VkResult error = vkEnumerateInstanceExtensionProperties(pLayerName, &extCount, nullptr);
+        if (error != VkResult::VK_SUCCESS)
         {
             logErrorCB("listInstanceExtensionProperties -> failed to read how much extension exist.");
             return {};
@@ -815,12 +798,12 @@ namespace VKI
 
         std::vector<VkExtensionProperties> extVector(extCount);
 
-        lastApiError = vkEnumerateInstanceExtensionProperties(pLayerName, &extCount, extVector.data());
-        if (lastApiError == VkResult::VK_INCOMPLETE)
+        error = vkEnumerateInstanceExtensionProperties(pLayerName, &extCount, extVector.data());
+        if (error == VkResult::VK_INCOMPLETE)
         {
             logWarningCB("listInstanceExtensionProperties -> VK_INCOMPLETE -> failed to fetch ALL of the properties array.");
         }
-        else if (lastApiError != VkResult::VK_SUCCESS)
+        else if (error != VkResult::VK_SUCCESS)
         {
             logErrorCB("listInstanceExtensionProperties -> failed to fetch the properties array.");
         }
@@ -1075,8 +1058,8 @@ namespace VKI
     std::vector<VkLayerProperties> listInstanceLayersProperties()
     {
         uint32_t size=0;
-        lastApiError = vkEnumerateInstanceLayerProperties(&size, nullptr);
-        if (lastApiError != VkResult::VK_SUCCESS)
+        VkResult error = vkEnumerateInstanceLayerProperties(&size, nullptr);
+        if (error != VkResult::VK_SUCCESS)
         {
             logErrorCB("listInstanceLayersProperties failed to count how many layers exist.");
             return {};
@@ -1084,8 +1067,8 @@ namespace VKI
 
         std::vector<VkLayerProperties> layersProperties(size);
 
-        lastApiError = vkEnumerateInstanceLayerProperties(&size, layersProperties.data());
-        if (lastApiError != VkResult::VK_SUCCESS)
+        error = vkEnumerateInstanceLayerProperties(&size, layersProperties.data());
+        if (error != VkResult::VK_SUCCESS)
         {
             logErrorCB("listInstanceLayersProperties failed to fetch every validation layers that exist.");
             return {};
@@ -1116,6 +1099,7 @@ namespace VKI
         logInfoCB(ss.str().c_str());
     }
 
+    // TODO
     /**@brief Retrive the names from validationLayers.
      * It's supposed to replace the need for validationLayersNames.
      */
@@ -1146,24 +1130,24 @@ namespace VKI
     {
         uint32_t count = 0;
 
-        lastApiError = vkEnumeratePhysicalDevices(instance, &count, nullptr);
+        VkResult error = vkEnumeratePhysicalDevices(instance, &count, nullptr);
 
-        if ((lastApiError != VkResult::VK_SUCCESS) && (lastApiError != VkResult::VK_INCOMPLETE))
+        if ((error != VkResult::VK_SUCCESS) && (error != VkResult::VK_INCOMPLETE))
         {
             logFatalErrorCB("listInstancePhysicalDevices failed to count how many physical device are available.");
             throw std::runtime_error("listInstancePhysicalDevices failed to count how many physical device are available.");
         }
 
         std::vector<VkPhysicalDevice> physicalDevices(count);
-        lastApiError = vkEnumeratePhysicalDevices(instance, &count, physicalDevices.data());
+        error = vkEnumeratePhysicalDevices(instance, &count, physicalDevices.data());
 
-        if (lastApiError == VkResult::VK_INCOMPLETE)
+        if (error == VkResult::VK_INCOMPLETE)
         {
             logErrorCB("listInstancePhysicalDevices failed to fetch every physical devices.");
         }
         else if (
-                (lastApiError == VkResult::VK_ERROR_OUT_OF_HOST_MEMORY)   ||
-                (lastApiError == VkResult::VK_ERROR_OUT_OF_DEVICE_MEMORY)
+                (error == VkResult::VK_ERROR_OUT_OF_HOST_MEMORY)   ||
+                (error == VkResult::VK_ERROR_OUT_OF_DEVICE_MEMORY)
                 )
         {
             logFatalErrorCB("listInstancePhysicalDevices failed to fetch physicalDevices -> out of memory.");
@@ -2600,41 +2584,41 @@ namespace VKI
         logicDeviceCreateInfo.ppEnabledExtensionNames = deviceExtensionsNames.data();
 
         VkDevice logicalDevice;
-        lastApiError = vkCreateDevice(physicalDevice, &logicDeviceCreateInfo, nullptr, &logicalDevice);
+        VkResult error = vkCreateDevice(physicalDevice, &logicDeviceCreateInfo, nullptr, &logicalDevice);
 
-        if (lastApiError == VkResult::VK_SUCCESS)
+        if (error == VkResult::VK_SUCCESS)
         {
             logInfoCB("createLogicalDevice successfully created a new logic device");
         }
-        else if (lastApiError == VkResult::VK_ERROR_INITIALIZATION_FAILED)
+        else if (error == VkResult::VK_ERROR_INITIALIZATION_FAILED)
         {
             logFatalErrorCB("createLogicalDevice failed to initialize a VkDevice "
                             "(you should check that your vulkan driver is up to date)");
             throw std::runtime_error("VKI::createLogicalDevice failed to initialize a VkDevice "
                                      "(you should check that your vulkan driver is up to date)");
         }
-        else if (lastApiError == VkResult::VK_ERROR_EXTENSION_NOT_PRESENT)
+        else if (error == VkResult::VK_ERROR_EXTENSION_NOT_PRESENT)
         {
             logFatalErrorCB("createLogicalDevice failed to create a VkDevice : "
                             "a logic device specific extensions is missing.");
             throw std::runtime_error("VKI::createLogicalDevice failed to create a VkDevice : "
                                      "a logic device specific extensions is missing.");
         }
-        else if (lastApiError == VkResult::VK_ERROR_FEATURE_NOT_PRESENT)
+        else if (error == VkResult::VK_ERROR_FEATURE_NOT_PRESENT)
         {
             logFatalErrorCB("createLogicalDevice failed to create a VkDevice : "
                             "a device feature is missing.");
             throw std::runtime_error("VKI::createLogicalDevice failed to create a VkDevice : "
                                      "a device feature is missing.");
         }
-        else if (lastApiError == VkResult::VK_ERROR_TOO_MANY_OBJECTS)
+        else if (error == VkResult::VK_ERROR_TOO_MANY_OBJECTS)
         {
             logFatalErrorCB("createLogicalDevice failed to create a VkDevice : "
                             "apparently too many objects (logic device) have already been created.");
             throw std::runtime_error("VKI::createLogicalDevice failed to create a VkDevice : "
                                      "apparently too many objects (logic device) have already been created.");
         }
-        else if (lastApiError == VkResult::VK_ERROR_DEVICE_LOST)
+        else if (error == VkResult::VK_ERROR_DEVICE_LOST)
         {
             logFatalErrorCB("createLogicalDevice failed to create a VkDevice : "
                             "physical device lost ... did you just remove your GPU "
@@ -4444,7 +4428,7 @@ namespace VKI
             logMemoryHeapInfo(deviceMemProperties, heapIndex);
 
         ss.str(std::string());
-        ss<<"----- logMemoryInfo successfully logged info about all available heap on the system";
+        ss<<"----- logMemoryInfo successfully logged info about all available heap on the system -----";
         logInfoCB(ss.str().c_str());
     }
 
