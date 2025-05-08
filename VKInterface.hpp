@@ -1,9 +1,8 @@
 #ifndef VKINTERFACE_HEADER 
 #define VKINTERFACE_HEADER 
 
-/* If you're here, it might be cause I didn't made a clean docs.
- * To get an overview of this lib, read the structure defined right after.
- * Then search for all '///'. Thoses are chapter-like section that group functions by topics (e.g. /// Queue Family).
+/* To get an overview of this lib, read the structure defined right after.
+ * Then search for all '///'. Thoses are chapter-like sections that group functions by topics (e.g. /// Queue Family).
  */
 
 #define GLFW_INCLUDE_VULKAN
@@ -324,12 +323,12 @@ namespace VKI
 
     struct BufferInfo
     {
-        VkDeviceSize          size;
-        VkDeviceSize          offset  = 0; // Offset from the memory origin.
-        VkDeviceSize          alignment = -1; // Alignment of the memory region.
-        VkBufferUsageFlags    usage   = 0;
-        VkBufferCreateFlags   flags   = 0;
-    #ifdef VK_VERSION_1_4
+        VkDeviceSize          size      = 0;
+        VkDeviceSize          offset    = 0; // Offset from the memory origin.
+        VkDeviceSize          alignment = 0; // Alignment of the whole memory region the buffer is in.
+        VkBufferUsageFlags    usage     = 0;
+        VkBufferCreateFlags   flags     = 0;
+    #ifdef VK_VERSION_1_4                    // TODO check if usage2 is relevant here.
         VkBufferUsageFlags2   usage2    = 0;
         bool                  useUsage2 = false;
     #else
@@ -345,8 +344,8 @@ namespace VKI
 
     struct Buffer
     {
-        VkBuffer       buffer = VK_NULL_HANDLE;
-        VkDeviceMemory memory = VK_NULL_HANDLE;
+        VkBuffer                        buffer = VK_NULL_HANDLE;
+        std::shared_ptr<VkDeviceMemory> memory = std::make_shared<VkDeviceMemory>(VK_NULL_HANDLE);
 
         void*          mappedAddr = nullptr; // Only if info.memoryProperties contain HOST_VISIBLE.
         BufferInfo     info;
@@ -666,8 +665,6 @@ namespace VKI
     void destroyBuffer(const VkDevice, Buffer&, const bool free_memory=true) noexcept;
     void destroyBuffer(const VkDevice, VkBuffer&) noexcept;
 
-    // TODO review this function since it's not compatible with allocateBuffers
-    // |-> May update it to take a 'device' buffer and create a mirror to the host side.
     /**@brief Create two Buffers : a 'Buffer' (device_local) and its 'Mirror' (host_visible).
      * The two Buffers are identical except that one is created with DEVICE_LOCAL and the other one with HOST_VISIBLE.
      * @param write, add TRANSFER_SRC to host and TRANSFER_DET to device.
@@ -688,37 +685,29 @@ namespace VKI
                                     const bool removeCoherenceOnDevice  = true
                                     );
 
-    //TODO create a new function : 
-    //BufferMirror createBufferMirrorFromDeviceBuffer(const VkDevice,
-    //                                                const Buffer&  deviceBuffer,
-    //                                                const bool write = true,
-    //                                                const bool read  = true,
-    //                                                const std::optional<std::vector<uint32_t>>
-    //                                                ...
-
     /**@brief Allocate memory to a buffer.
      * @return true on success.
      * @return false if no suitable heap is found or if the targetMemoryIndex doesn't support the buffer.
      * @throw  runtime_error if out of memory.
      * @warning Doesn't support multi-instance memory pages.
      * @note For better performance (by incresing cache-frendly data) take a look at allocateBuffers(...);
+     * @param targetMemoryIndex the memory index that is taken >if supported< by the buffer.
      */
     bool allocateBuffer(const VkDevice, 
                               Buffer&, 
                         const VkPhysicalDeviceMemoryProperties&, 
-                        const uint32_t  targetMemoryIndex = -1,  // -1 => take first founded suitable memory index.
-                        const bool      bindMemoryToBuffer=true, // call bindBufferMemory(...);
-                        const bool      logInfo=true
+                        const bool      bindMemoryToBuffer  =true, // call bindBufferMemory(...);
+                        const uint32_t  targetMemoryIndex   = -1,  // if != -1 take this heap index if supported.
+                        const bool      logInfo             =true
                        );
-    /**@brief Allocate a bunch of buffers to a single memory allocation.
+    /**@brief Allocate a bunch of buffers to a single memory allocation (behave the same way than allocateBuffer).
      */
     bool allocateBuffers(const VkDevice,
                          std::vector<Buffer*>,
                          const VkPhysicalDeviceMemoryProperties&, 
-                         const VkDeviceSize customAlignment= -1,  // -1 let VKI figure it out.
-                         const uint32_t  targetMemoryIndex = -1,  // -1 => take first founded suitable memory index.
-                         const bool      bindMemoryToBuffer=true, // call bindBufferMemory(...);
-                         const bool      logInfo=true
+                         const bool         bindMemoryToBuffer  = true,// call bindBufferMemory(...);
+                         const uint32_t     targetMemoryIndex   = -1,  // if != -1 take this heap index if supported.
+                         const bool         logInfo             = true
                        );
     /**@brief Find a set of memory index that are suitable for the memory requirements and properties.
      */
@@ -732,14 +721,25 @@ namespace VKI
                                  );
     void freeMemory(const VkDevice, VkDeviceMemory&) noexcept;
 
-    void bindBufferMemory(const VkDevice, VkBuffer, VkDeviceMemory, const VkDeviceSize memoryOffset);
-    //TODO
-  //void bindBufferMemory(const VkDevice, const std::vector<const Buffer*>);
+
+    void bindBufferMemory(const VkDevice, const VkBuffer, const VkDeviceMemory, const VkDeviceSize memoryOffset);
+    /*@brief If the vulkan api version allow it (>= 1_1), bind a bunch of buffers to memory more efficiently.
+     *@param failed (require VK_VERSION_1_4) return a vector of failed buffer (Vulkan specs state : a buffer that failed this step must be destroyed).
+     *@note if VK_VERSION_1_1 isn't defined, this is just a for loop calling the previously defined bindBufferMemory function.
+     *@note The Vulkan spec states : 
+           "The buffers (returned by failed parameter if available) are in an indeterminate state, and must not be used. 
+            Applications should destroy these buffers."
+
+     */
+    void bindBufferMemory(const VkDevice, const std::vector<Buffer*>, std::vector<size_t> *failed=nullptr);
 
     size_t getGlobalMemoryAllocationCount() noexcept; // Return how many allocations simultaneously exist.
     void logMemoryHeapInfo(const VkPhysicalDeviceMemoryProperties&, const uint32_t heapIndex); // log infos about a heap.
     void logMemoryInfo(const VkPhysicalDeviceMemoryProperties&); // log infos about all heaps.
     void logMemoryRequirements(const VkMemoryRequirements, const void* addr);
+    void logBufferInfo(const Buffer&, const VkDevice); // logs all info about a buffer.
+    std::string bufferUsageFlagsToString(const VkBufferUsageFlags flag) noexcept; // Tiny helper function for bebugging.
+    std::string memoryPropertiesToString(const VkMemoryPropertyFlags) noexcept; // Tiny helper function for bebugging.
 
     void* mapMemory(const VkDevice           device,
                     const VkDeviceMemory     memory,

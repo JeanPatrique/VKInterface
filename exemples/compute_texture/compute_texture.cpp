@@ -1,5 +1,5 @@
 
-/* This file showcase a sand falling simutation run throught vulkan compute shaders.*/
+/* This file showcase a sand falling simulation run throught vulkan compute shaders.*/
 
 /* Step :
  *     /
@@ -10,8 +10,7 @@
  *   - Discover the secondary buffer mystery.
  *   - Create a color array base on the type of the pixel.
  *   - Draw each quad as their corresponding color in the color buffer.
- *   - ... make them fall :)
- *   - happy noita !
+ *   - 
  */
 
 #include <iostream>
@@ -70,7 +69,8 @@ struct Vertex
     glm::vec2 position;
     glm::vec3 color;
 };
-const std::array<Vertex, 4> quadGeometry   = {
+
+const std::array<Vertex, 4> quadGeometry   = { // The geometry of every particles.
     Vertex{{-0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}},
     Vertex{{ 0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}},
     Vertex{{-0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}},
@@ -79,6 +79,12 @@ const std::array<Vertex, 4> quadGeometry   = {
 const std::array<uint16_t, 6> quadIndices = {
     0, 1, 2,
     1, 2, 3
+};
+
+struct GlobalUniformBuffer
+{
+    glm::mat4       camera; // matrix to camera space;
+    float           deltaTime;
 };
 
 const std::string progName = "VKI demo";
@@ -251,13 +257,13 @@ int main(int argc, char** argv)
     mainScope.logv("Logging info about the available memory.");
     VKI::logMemoryInfo(vContext.physicalDeviceMemoryProperties);
 
-    mainScope.logv("Creating the vertex buffer.");
     // Vertex buffer :
+    mainScope.logv("Creating the vertex buffer.");
     VKI::BufferInfo vertexBufferInfo{};
     vertexBufferInfo.size  = sizeof(Vertex) * quadGeometry.size();
     vertexBufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
     vertexBufferInfo.memoryProperties = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-    // The queue family indices are set separatly in the createBufferMirror function.
+    // The queue family indices are set separately in the createBufferMirror function.
     //vertexBufferInfo.queueFamilyIndicesSharingTheBuffer = {vContext.queueFamilies[GRAPHICS_QUEUE].info.familyIndex,
     //                                                       vContext.queueFamilies[TRANSFER_QUEUE].info.familyIndex};
 
@@ -273,35 +279,107 @@ int main(int argc, char** argv)
                                                                vContext.queueFamilies[GRAPHICS_QUEUE].info.familyIndex
                                                               }}
                                                              );
+    // Indices Buffer :
+    mainScope.logv("Creating the index buffer.");
+    VKI::BufferInfo indicesBufferInfo{};
+    indicesBufferInfo.size  = sizeof(uint16_t) * quadIndices.size();
+    indicesBufferInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+    indicesBufferInfo.memoryProperties = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    //indicesBufferInfo.queueFamilyIndicesSharingTheBuffer = {vContext.queueFamilies[GRAPHICS_QUEUE].info.familyIndex,
+    //                                                       vContext.queueFamilies[TRANSFER_QUEUE].info.familyIndex};
 
-    for (auto& buffer : std::vector<std::shared_ptr<VKI::Buffer>>{vertexBuffers.hostBuffer, vertexBuffers.deviceBuffer})
+    VKI::BufferMirror indicesBuffers = VKI::createBufferMirror(vContext.device, 
+                                                               indicesBufferInfo,
+                                                               true, // Allow write from host to device.
+                                                               false,// Don't enable read from device to host.
+               /*Host buffer queue family accessing it.*/     {{
+                                                               vContext.queueFamilies[TRANSFER_QUEUE].info.familyIndex
+                                                              }},
+               /*Device buffer queue families sharing it.*/   {{
+                                                               vContext.queueFamilies[TRANSFER_QUEUE].info.familyIndex,
+                                                               vContext.queueFamilies[GRAPHICS_QUEUE].info.familyIndex
+                                                              }}
+                                                              );
+
+    // uniform buffer :
+    mainScope.logv("Creating the uniform buffer.");
+    VKI::BufferInfo uniformBufferInfo{};
+    uniformBufferInfo.size  = sizeof(GlobalUniformBuffer);
+    uniformBufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    uniformBufferInfo.memoryProperties = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    //uniformBufferInfo.queueFamilyIndicesSharingTheBuffer = {vContext.queueFamilies[GRAPHICS_QUEUE].info.familyIndex,
+    //                                                       vContext.queueFamilies[TRANSFER_QUEUE].info.familyIndex};
+
+    VKI::BufferMirror uniformBuffers = VKI::createBufferMirror(vContext.device, 
+                                                               uniformBufferInfo,
+                                                               true, // Allow write from host to device.
+                                                               false,// Don't enable read from device to host.
+               /*Host buffer queue family accessing it.*/     {{
+                                                               vContext.queueFamilies[TRANSFER_QUEUE].info.familyIndex
+                                                              }},
+               /*Device buffer queue families sharing it.*/   {{
+                                                               vContext.queueFamilies[TRANSFER_QUEUE].info.familyIndex,
+                                                               vContext.queueFamilies[GRAPHICS_QUEUE].info.familyIndex
+                                                              }}
+                                                              );
+
+    // Allocating devices buffer to the same memory region.
+    mainScope.logv("Allocating device buffers.");
+    if (!VKI::allocateBuffers(vContext.device, 
+                              {
+                               vertexBuffers.deviceBuffer.get(),
+                               indicesBuffers.deviceBuffer.get(),
+                               uniformBuffers.deviceBuffer.get()
+                              }, 
+                              vContext.physicalDeviceMemoryProperties
+                             )
+       )
     {
-        if (!VKI::allocateBuffer(vContext.device, 
-                                 *buffer,
-                                 vContext.physicalDeviceMemoryProperties
-                                ))
-        {
-            mainScope.logf("mainScope unable to find suitable memory for the vertex buffer !");
-            std::cerr<<"Failed to find a suitable heap for the vertex memory, "
-                       "please change the requirement for the vertex buffer\n"
-                       "PS : The available memory properties should have been written to the logg file.";
-            throw std::logic_error("main : unable to find suitable memory for the vertex buffer !");
-        }
+        mainScope.logf("Unable to find a suitable device memory to write the buffers !");
+        std::cerr<<"Failed to find a suitable heap into the device memory.\n"
+                   "Check the logs file to get an idea of what happended.\n";
+        throw std::logic_error("main : unable to find suitable memory for the vertex buffer !");
     }
 
-    vContext.buffers.emplace_back(vertexBuffers.hostBuffer);
-    vContext.buffers.emplace_back(vertexBuffers.deviceBuffer);
+    mainScope.logv("Allocating host buffers.");
+    if (!VKI::allocateBuffers(vContext.device, 
+                              {
+                               vertexBuffers.hostBuffer.get(),
+                               indicesBuffers.hostBuffer.get(),
+                               uniformBuffers.hostBuffer.get()
+                              }, 
+                              vContext.physicalDeviceMemoryProperties
+                             )
+       )
+    {
+        mainScope.logf("Unable to find a suitable host memory to write the buffers !");
+        std::cerr<<"Failed to find a suitable heap into the host memory.\n"
+                   "Check the logs file to get an idea of what happended.\n";
+        throw std::logic_error("main : unable to find suitable memory for the vertex buffer !");
+    }
 
+    // Adding theses buffers to the context so they will be free-d before exiting (note : in the same order they should be in memory).
+    vContext.buffers.emplace_back(vertexBuffers.deviceBuffer);
+    vContext.buffers.emplace_back(indicesBuffers.deviceBuffer);
+    vContext.buffers.emplace_back(uniformBuffers.deviceBuffer);
+    vContext.buffers.emplace_back(vertexBuffers.hostBuffer);
+    vContext.buffers.emplace_back(indicesBuffers.hostBuffer);
+    vContext.buffers.emplace_back(uniformBuffers.hostBuffer);
+
+    // ------- Push buffers.
     mainScope.logv("loading vertex data to the device.");
     VKI::writeBuffer(vContext.device, *vertexBuffers.hostBuffer, quadGeometry.data()); // since no maxSize have been set : quadGeometry.size() must be >= buffer.info.size;
     VKI::unmapBuffer(vContext.device, *vertexBuffers.hostBuffer);
 
-    // Transfering stagging vertex buffer to device vertex buffer.
-    auto cmdCopyBuffer = vContext.queueFamilies[TRANSFER_QUEUE].commands[0].PBuffers[0];          // Extract the command buffer.
+    mainScope.logv("loading index data to the device.");
+    VKI::writeBuffer(vContext.device, *indicesBuffers.hostBuffer, quadIndices.data()); // since no maxSize have been set : quadIndices.size() must be >= buffer.info.size;
+    VKI::unmapBuffer(vContext.device, *indicesBuffers.hostBuffer);
 
-    VKI::cmdBeginRecordCommandBuffer(cmdCopyBuffer, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT); // Begin record.
-    VKI::recordPushBufferMirror(vertexBuffers, cmdCopyBuffer);                                    // Record copy.
-    VKI::cmdEndRecordCommandBuffer(cmdCopyBuffer);                                                // End record.
+    auto cmdCopyBuffer = vContext.queueFamilies[TRANSFER_QUEUE].commands[0].PBuffers[0];         // Extract the command buffer.
+    VKI::cmdBeginRecordCommandBuffer(cmdCopyBuffer, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);// Begin record.
+    VKI::recordPushBufferMirror(vertexBuffers, cmdCopyBuffer);                                   // Record Vertex  copy.
+    VKI::recordPushBufferMirror(indicesBuffers, cmdCopyBuffer);                                  // Record Indices copy.
+    VKI::cmdEndRecordCommandBuffer(cmdCopyBuffer);                                               // End record.
 
     {
     VKI::SubmitInfo transferSubmitOrder{};
@@ -311,57 +389,7 @@ int main(int argc, char** argv)
     VKI::queueSubmit(vContext.queueFamilies[TRANSFER_QUEUE].queues[0], {transferSubmitOrder}, vContext.fences[2]);
     VKI::waitFence(vContext.device, vContext.fences[2], UINT64_MAX, true); // true => enable logs.
     }
-
-    // Indices Buffer :
-    mainScope.logv("Creating the index buffer.");
-    VKI::BufferInfo indicesBufferInfo{};
-    indicesBufferInfo.size  = sizeof(uint16_t) * quadIndices.size();
-    indicesBufferInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-    indicesBufferInfo.memoryProperties = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-    indicesBufferInfo.queueFamilyIndicesSharingTheBuffer = {vContext.queueFamilies[GRAPHICS_QUEUE].info.familyIndex,
-                                                           vContext.queueFamilies[TRANSFER_QUEUE].info.familyIndex};
-
-    VKI::BufferMirror indicesBuffers = VKI::createBufferMirror(vContext.device, 
-                                                               indicesBufferInfo,
-                                                               true, // Allow write from host to device.
-                                                               false // Don't enable read from device to host.
-                                                              );
-
-    for (auto& buffer : std::vector<std::shared_ptr<VKI::Buffer>>{indicesBuffers.hostBuffer, indicesBuffers.deviceBuffer})
-    {
-        if (!VKI::allocateBuffer(vContext.device, 
-                                 *buffer,
-                                 vContext.physicalDeviceMemoryProperties
-                                ))
-        {
-            mainScope.logf("mainScope unable to find suitable memory for the indices buffer !");
-            std::cerr<<"Failed to find a suitable heap for the indices memory, "
-                       "please change the requirement for the indices buffer\n"
-                       "PS : The available memory properties should have been written to the logg file.";
-            throw std::logic_error("main : unable to find suitable memory for the index buffer !");
-        }
-    }
-
-    vContext.buffers.emplace_back(indicesBuffers.hostBuffer);
-    vContext.buffers.emplace_back(indicesBuffers.deviceBuffer);
-
-    mainScope.logv("loading index data to the device.");
-    VKI::writeBuffer(vContext.device, *indicesBuffers.hostBuffer, quadIndices.data()); // since no maxSize have been set : quadIndices.size() must be >= buffer.info.size;
-    VKI::unmapBuffer(vContext.device, *indicesBuffers.hostBuffer);
-
-    // Transfering stagging indices buffer to device index buffer.
-    cmdCopyBuffer = vContext.queueFamilies[TRANSFER_QUEUE].commands[0].PBuffers[0];       // Extract the command buffer.
-
-    VKI::cmdBeginRecordCommandBuffer(cmdCopyBuffer, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT); // Begin record.
-    VKI::recordPushBufferMirror(indicesBuffers, cmdCopyBuffer);                                    // Record copy.
-    VKI::cmdEndRecordCommandBuffer(cmdCopyBuffer);                                                // End record.
-
-    VKI::SubmitInfo transferSubmitOrder{};
-    transferSubmitOrder.commandBuffers.push_back(cmdCopyBuffer);
-
-    VKI::resetFence(vContext.device, vContext.fences[2]); // reset the fence before submit.
-    VKI::queueSubmit(vContext.queueFamilies[TRANSFER_QUEUE].queues[0], {transferSubmitOrder}, vContext.fences[2]);
-    VKI::waitFence(vContext.device, vContext.fences[2], UINT64_MAX, true); // enable logs.
+    // ------- Push buffers.
 
     // Creating the graphics pipeline and render pass.
     VKI::RenderPass renderPass;

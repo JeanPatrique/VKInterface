@@ -4210,9 +4210,10 @@ namespace VKI
     {
         destroyBuffer(device, buffer.buffer);
         buffer.buffer=VK_NULL_HANDLE;
-        if (free_memory)
+        if (free_memory && (buffer.memory != nullptr))
         {
-            freeMemory   (device, buffer.memory);
+            if (buffer.memory.get() != VK_NULL_HANDLE)
+                freeMemory(device, *buffer.memory.get());
             buffer.memory=VK_NULL_HANDLE;
         }
         logInfoCB("destroyBuffer (Buffer) successfully destroyed a Buffer struct.");
@@ -4233,13 +4234,14 @@ namespace VKI
     bool allocateBuffer(const VkDevice                          device, 
                               Buffer&                           buffer, 
                         const VkPhysicalDeviceMemoryProperties& phyMemoriesProperties, 
-                        const uint32_t                          targetMemoryIndex,
                         const bool                              bindMemoryToBuffer,
+                        const uint32_t                          targetMemoryIndex,
                         const bool                              logInfo
                        )
     {
         VkMemoryRequirements bufferRequirements{};
         vkGetBufferMemoryRequirements(device, buffer.buffer, &bufferRequirements);
+        buffer.info.alignment = bufferRequirements.alignment;
 
         if (logInfo)
         {
@@ -4281,12 +4283,12 @@ namespace VKI
             logMemoryHeapInfo(phyMemoriesProperties, heapIndex);
         }
 
-        buffer.memory = allocateMemory(device, bufferRequirements.size, memoryTypeIndex);
+        buffer.memory = std::make_shared<VkDeviceMemory>(allocateMemory(device, bufferRequirements.size, memoryTypeIndex));
 
         if (bindMemoryToBuffer)
         {
             logVerboseCB("allocateBuffer directly call bindBufferMemory");
-            bindBufferMemory(device, buffer.buffer, buffer.memory, buffer.info.offset);
+            bindBufferMemory(device, buffer.buffer, *buffer.memory.get(), buffer.info.offset);
         }
 
         return true;
@@ -4295,15 +4297,112 @@ namespace VKI
     bool allocateBuffers(const VkDevice                          device,
                          std::vector<Buffer*>                    buffers,
                          const VkPhysicalDeviceMemoryProperties& phyMemoryProperties, 
-                         const VkDeviceSize                      customAlignment,    // -1 let VKI figure it out.
-                         const uint32_t                          targetMemoryIndex,  // -1 => take first founded suitable memory index.
                          const bool                              bindMemoryToBuffer, // call bindBufferMemory(...);
+                         const uint32_t                          targetMemoryIndex,  // -1 => take first founded suitable memory index.
                          const bool                              logInfo
                        )
     {
         // Get each buffer its memory requirement.
-        return false;
+        std::vector<VkMemoryRequirements> buffersRequirements;
+        buffersRequirements.reserve(buffers.size());
+
+        // Find biggest alignment + fetch their memoryRequirements.
+        VkDeviceSize maxAlignment = 0;
+        for (Buffer* buffer : buffers)
+        {
+            VkMemoryRequirements bufferRequirements;
+            vkGetBufferMemoryRequirements(device, buffer->buffer, &bufferRequirements);
+
+            buffersRequirements.push_back(bufferRequirements);
+            if (bufferRequirements.alignment > maxAlignment)
+                maxAlignment = bufferRequirements.alignment;
+        }
+
+        // Store the max alignment in each buffer and compute their offset from the start address.
+        //for (auto buffer(buffers.begin()) ; buffer!=buffers.end(); buffer++)
+        for (size_t i(0) ; i<buffers.size() ; i++)
+        {
+            buffers[i]->info.alignment = maxAlignment;
+
+            if (i>0)
+            {
+                Buffer *prevBuffer = buffers[i-1];
+                buffers[i]->info.offset = prevBuffer->info.offset + 
+                                          prevBuffer->info.size   + 
+                                          ((maxAlignment - (prevBuffer->info.size % maxAlignment)) % maxAlignment);
+            }
+            else
+                buffers[i]->info.offset = 0;
+        }
+
+        const VkDeviceSize memorySize = buffers.back()->info.offset + 
+                                        buffers.back()->info.size   +
+                                      ((maxAlignment - (buffers.back()->info.size % maxAlignment)) % maxAlignment); // The last buffer must
+                                                                                                                    // be aligned too.
+
+    #ifdef VKI_ENABLE_DEBUG_LOGS
+        logVerboseCB("allocateBuffers will call logBufferInfo on every buffer :");
+        for (Buffer *buffer : buffers)
+        {
+            logBufferInfo(*buffer, device);
+        }
+        std::stringstream ss;
+        ss<<"allocateBuffers will allocate a "<<std::dec<<memorySize<<" Bytes memory chunk.";
+        logVerboseCB(ss.str().c_str());
+    #endif//VKI_ENABLE_DEBUG_LOGS
+
+        // Find each buffers supported heaps.
+        std::set<uint32_t> memoryTypeIndices;
+        for (size_t i=0 ; i<buffers.size() ; i++)
+        {
+            memoryTypeIndices.merge(getMemoryIndexFromMemoryRequirement(buffersRequirements[i],
+                                                                               buffers[i]->info.memoryProperties,
+                                                                               phyMemoryProperties
+                                                                              ));
+        }
+        uint32_t memoryTypeIndex;
+        if (memoryTypeIndices.count(targetMemoryIndex) != 0)
+        {
+            memoryTypeIndex = targetMemoryIndex;
+        }
+        else if (not memoryTypeIndices.empty())
+        {
+            memoryTypeIndex = *memoryTypeIndices.begin();
+        }
+        else
+        {
+            logErrorCB("allocateBuffers impossible to find a heap location from which all buffers could be allocated.");
+            //throw std::runtime_error("VKI::allocateBuffer failed to find a suitable memory to allocate from.");
+            return false;
+        }
+
+        if (logInfo)
+        {
+            const uint32_t heapIndex = phyMemoryProperties.memoryTypes[memoryTypeIndex].heapIndex;
+            std::stringstream ss;
+            ss<<"The buffer could be allocated from "<<memoryTypeIndices.size()<<" heaps, but ";
+            ss<<"allocateBuffer will allocate memory from heap id=";
+            ss<<std::dec<<heapIndex;
+            logInfoCB(ss.str().c_str());
+            
+            logMemoryHeapInfo(phyMemoryProperties, heapIndex);
+        }
+
+        std::shared_ptr<VkDeviceMemory> memory = std::make_shared<VkDeviceMemory>(allocateMemory(device, memorySize, memoryTypeIndex));
+
+        for (Buffer* buffer : buffers)
+        {
+            buffer->memory = memory;
+        }
+
+        if (bindMemoryToBuffer)
+        {
+            bindBufferMemory(device, buffers);
+        }
+
+        return true;
     }
+
 
     std::set<uint32_t> getMemoryIndexFromMemoryRequirement(const VkMemoryRequirements  memoryRequirements, // Size,Alignment
                                                            const VkMemoryPropertyFlags memoryProperties,  // DEVICE_LOCAL, ...
@@ -4375,9 +4474,53 @@ namespace VKI
         }
     }
 
+    void bindBufferMemory(const VkDevice device, const std::vector<Buffer*> buffers, std::vector<size_t> *failed)
+    {
+        // vkBindBufferMemory2 available yet.
+//#ifdef VK_VERSION_1_1 // Then batch the bind commands.
+//        std::vector<VkBindBufferMemoryInfo> bindInfos;
+//        bindInfos.reserve(buffers.size());
+//
+//    #ifdef VK_VERSION_1_4
+//        std::vector<VkBindMemoryStatus> bindingsStatus(buffers.size(), 
+//                                                       {
+//                                                       /*sType*/  VK_STRUCTURE_TYPE_BIND_MEMORY_STATUS,
+//                                                       /*pNext*/  nullptr,
+//                                                       /*pResult*/new VkResult
+//                                                       });
+//    #endif
+//
+//        for (size_t i=0 ; i<buffers.size() ; i++)
+//        {
+//            bindInfos.emplace_back(VkBindBufferMemoryInfo{
+//                    /*sType*/ VK_STRUCTURE_TYPE_BIND_BUFFER_MEMORY_INFO,
+//    #ifdef VK_VERSION_1_4
+//                    /*pNext*/ static_cast<void*>(&bindingsStatus[i]),
+//    #else
+//                    /*pNext*/ nullptr,
+//    #endif
+//                    /*buffer*/buffers[i]->buffer,
+//                    /*memory*/*buffers[i]->memory.get(),
+//                    /*offset*/buffers[i]->info.offset
+//                    });
+//        }
+//
+//        VkResult error = vkBindBufferMemory2(device, bindInfos.size(), bindInfos.data());
+//        switch (error)
+//        {
+//        }
+//
+//#else   // If VERSION_1_0, just a for loop to bindMemoryToBuffer.
+        for (const Buffer* buffer : buffers)
+        {
+            bindBufferMemory(device, buffer->buffer, *buffer->memory.get(), buffer->info.offset);
+        }
+//#endif
+    }
+
     void bindBufferMemory(const VkDevice       device, 
-                                VkBuffer       buffer, 
-                                VkDeviceMemory memory,
+                          const VkBuffer       buffer, 
+                          const VkDeviceMemory memory,
                           const VkDeviceSize   memoryOffset
                          )
     {
@@ -4474,6 +4617,8 @@ namespace VKI
                 ss<<"\n\t\t|\t|-> unkown properties (VKI might be outdated) ???";
             if (flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
                 ss<<"\n\t\t|\t|-> DEVICE_LOCAL";
+            if (flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
+                ss<<"\n\t\t|\t|-> HOST_VISIBLE";
             if (flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
                 ss<<"\n\t\t|\t|-> HOST_COHERENT";
             if (flags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT)
@@ -4509,33 +4654,118 @@ namespace VKI
         ss<<"\n\t\t with an alignment (Bytes) : "<<std::dec<<static_cast<uint64_t>(requirements.alignment);
         ss<<"\n\t\t and memory type bits      : "<<std::hex<<static_cast<uint64_t>(requirements.memoryTypeBits);
 
-        ss<<"\n\t\t\t |-> ";
+        ss<<"\n\t\t\t |-> "<<memoryPropertiesToString(requirements.memoryTypeBits)<<";";
         if (requirements.memoryTypeBits == 0)
+
+        logInfoCB(ss.str().c_str());
+    }
+
+    // logs all info about a buffer.
+    void logBufferInfo(const Buffer& buffer, const VkDevice device)
+    {
+        VkMemoryRequirements bufferRequirements;
+        vkGetBufferMemoryRequirements(device, buffer.buffer, &bufferRequirements);
+
+        std::stringstream ss;
+        ss<<"logBufferInfo :";
+        ss<<"\n\t\t\t|-> VkBuffer object at : "<<std::hex<<reinterpret_cast<uint64_t>(buffer.buffer)<<";";
+        if (buffer.memory != nullptr)
+        {
+            if (*buffer.memory.get() == VK_NULL_HANDLE)
+                ss<<"\n\t\t\t|-> VkMemory object at : VK_NULL_HANDLE";
+            else
+                ss<<"\n\t\t\t|-> VkMemory object at : "<<std::hex<<reinterpret_cast<uint64_t>(*buffer.memory.get())<<";";
+        }
+        else
+            ss<<"\n\t\t\t|-> VkMemory object at : nullptr";
+        if (buffer.info.memoryProperties & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
+        {
+            if (buffer.memory != nullptr)
+            {
+                ss<<"\n\t\t\t|-> Wich is mapped  at : "<<std::hex<<reinterpret_cast<uint64_t>(*buffer.memory.get())<<";";
+            }
+            else
+                ss<<"\n\t\t\t|-> Wich have not been allocated.";
+        }
+        else
+            ss<<"\n\t\t\t|-> Wich cannot be mapped to host memory.";
+        ss<<"\n\t\t\t|-> And is defined as such :";
+        ss<<"\n\t\t\t|\t|-> Size      = "<<std::dec<<static_cast<size_t>(buffer.info.size)<<";";
+        ss<<"\n\t\t\t|\t|-> offset    = "<<std::dec<<static_cast<size_t>(buffer.info.offset)<<";";
+        ss<<"\n\t\t\t|\t|-> alignment = "<<std::dec<<static_cast<size_t>(buffer.info.alignment)<<";";
+        ss<<"\n\t\t\t|\t|-> usage (value = "<<std::hex<<buffer.info.usage<<") : "<<bufferUsageFlagsToString(buffer.info.usage)<<";";
+        ss<<"\n\t\t\t|\t|-> memoryProperties (value = "<<std::hex<<buffer.info.memoryProperties<<") : "
+                          <<memoryPropertiesToString(buffer.info.memoryProperties);
+        ss<<"\n\t\t\t|\t|-> Queue family indices sharing the buffer : ";
+        for (uint32_t i : buffer.info.queueFamilyIndicesSharingTheBuffer)
+            ss<<i<<", ";
+            ss<<";";
+        ss<<"\n\t\t\t|\t|-> This buffer use the sharing mode : "<< ((buffer.info.exclusiveMode) ? "VK_SHARING_MODE_EXCLUSIVE " : "VK_SHARING_MODE_CONCURRENT" );
+        
+        logInfoCB(ss.str().c_str());
+    }
+
+    // Tiny helper function for bebugging (non-exhaustive).
+    std::string bufferUsageFlagsToString(const VkBufferUsageFlags flag) noexcept
+    {
+        std::stringstream ss;
+        if (flag & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) 		ss<<"VK_BUFFER_USAGE_TRANSFER_SRC_BIT, ";
+        if (flag & VK_BUFFER_USAGE_TRANSFER_DST_BIT) 		ss<<"VK_BUFFER_USAGE_TRANSFER_DST_BIT, ";
+        if (flag & VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT)ss<<"VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT, ";
+        if (flag & VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT)ss<<"VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT, ";
+        if (flag & VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT) 		ss<<"VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, ";
+        if (flag & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT) 		ss<<"VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, ";
+        if (flag & VK_BUFFER_USAGE_INDEX_BUFFER_BIT) 		ss<<"VK_BUFFER_USAGE_INDEX_BUFFER_BIT, ";
+        if (flag & VK_BUFFER_USAGE_VERTEX_BUFFER_BIT) 		ss<<"VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, ";
+        if (flag & VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT) 	ss<<"VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, ";
+    #ifdef VK_VERSION_1_2
+        if (flag & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) 	ss<<"VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, ";
+    #endif
+    #ifdef VK_KHR_video_decode_queue
+        if (flag & VK_BUFFER_USAGE_VIDEO_DECODE_SRC_BIT_KHR) 	ss<<"VK_BUFFER_USAGE_VIDEO_DECODE_SRC_BIT_KHR, ";
+    #endif
+    #ifdef VK_KHR_video_decode_queue
+        if (flag & VK_BUFFER_USAGE_VIDEO_DECODE_DST_BIT_KHR) 	ss<<"VK_BUFFER_USAGE_VIDEO_DECODE_DST_BIT_KHR, ";
+    #endif
+    #ifdef VK_KHR_video_encode_queue
+        if (flag & VK_BUFFER_USAGE_VIDEO_ENCODE_DST_BIT_KHR)    ss<<"VK_BUFFER_USAGE_VIDEO_ENCODE_DST_BIT_KHR, ";
+    #endif
+    #ifdef VK_KHR_video_encode_queue
+        if (flag & VK_BUFFER_USAGE_VIDEO_ENCODE_SRC_BIT_KHR)    ss<<"VK_BUFFER_USAGE_VIDEO_ENCODE_SRC_BIT_KHR, ";
+    #endif
+
+        return ss.str();
+    }
+
+    // Tiny helper function for bebugging (should be exhaustive).
+    std::string memoryPropertiesToString(const VkMemoryPropertyFlags flags) noexcept
+    {
+        std::stringstream ss;
+        if (flags == 0)
             ss<<"None the property is null";
-        if (requirements.memoryTypeBits & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
+        if (flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
             ss<<"DEVICE_LOCAL, ";
-        if (requirements.memoryTypeBits & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
+        if (flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
             ss<<"HOST_VISIBLE, ";
-        if (requirements.memoryTypeBits & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
+        if (flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
             ss<<"HOST_COHERENT, ";
-        if (requirements.memoryTypeBits & VK_MEMORY_PROPERTY_HOST_CACHED_BIT)
+        if (flags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT)
             ss<<"HOST_CACHED, ";
-        if (requirements.memoryTypeBits & VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT)
+        if (flags & VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT)
             ss<<"LAZILY_ALLOCATED, ";
-        if (requirements.memoryTypeBits & VK_MEMORY_PROPERTY_PROTECTED_BIT)
+        if (flags & VK_MEMORY_PROPERTY_PROTECTED_BIT)
             ss<<"PROTECTED, ";
     #ifdef VK_AMD_device_coherent_memory
-        if (requirements.memoryTypeBits & VK_MEMORY_PROPERTY_DEVICE_COHERENT_BIT_AMD)
+        if (flags & VK_MEMORY_PROPERTY_DEVICE_COHERENT_BIT_AMD)
             ss<<"AMD_DEVICE_COHERENT, ";
-        if (requirements.memoryTypeBits & VK_MEMORY_PROPERTY_DEVICE_UNCACHED_BIT_AMD)
+        if (flags & VK_MEMORY_PROPERTY_DEVICE_UNCACHED_BIT_AMD)
             ss<<"AMD_DEVICE_UNCACHED, ";
     #endif
     #ifdef VK_NV_external_memory_rdma
-        if (requirements.memoryTypeBits & VK_MEMORY_PROPERTY_RDMA_CAPABLE_BIT_NV)
+        if (flags & VK_MEMORY_PROPERTY_RDMA_CAPABLE_BIT_NV)
             ss<<"NVIDIA_RDMA_CAPABLE, ";
     #endif
-        
-        logInfoCB(ss.str().c_str());
+        return ss.str();
     }
 
     void* mapMemory(const VkDevice           device,
@@ -4587,7 +4817,7 @@ namespace VKI
             logErrorCB("mapBuffer called on what appear to be a already mapped buffer since buffer.mappedAddr!=nullptr !");
         else
         {
-            buffer.mappedAddr = mapMemory(device, buffer.memory, buffer.info.offset, buffer.info.size);
+            buffer.mappedAddr = mapMemory(device, *buffer.memory.get(), buffer.info.offset, buffer.info.size);
             logInfoCB("mapBuffer successfully mapped a buffer.");
         }
     }
@@ -4598,7 +4828,7 @@ namespace VKI
             logWarningCB("unmappedBuffer called on buffer.mappedAddr=nullptr.");
         else
         {
-            vkUnmapMemory(device, buffer.memory);
+            vkUnmapMemory(device, *buffer.memory.get());
             buffer.mappedAddr = nullptr;
             logInfoCB("unmapBuffer successfully unmapped a buffer");
         }
@@ -4630,7 +4860,7 @@ namespace VKI
             VkMappedMemoryRange range{};
             ranges[i].sType  = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
             ranges[i].pNext  = nullptr;
-            ranges[i].memory = buffers[i].memory;
+            ranges[i].memory = *buffers[i].memory.get();
             ranges[i].offset = buffers[i].info.offset;
             ranges[i].size   = buffers[i].info.size;
             ranges.push_back(range);
